@@ -1,0 +1,32 @@
+{
+  "context": {
+    "fileName": "GEMINI.md"
+  },
+  "model": {
+    "name": "gemini-2.5-pro"
+  },
+  "telemetry": {
+    "enabled": true,
+    "logPrompts": false,
+    "target": "local"
+  },
+  "$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json",
+  "tools": {
+    "core": [
+      "ReadFileTool",
+      "GlobTool",
+      "WriteFileTool",
+      "ReplaceTextTool",
+      "google_web_search"
+    ],
+    "exclude": [
+      "run_shell_command",
+      "McpServer",
+      "TodosTool",
+      "MemoryTool"
+    ]
+  },
+  "security": {
+    "disableYoloMode": false
+  }
+}
