@@ -3,15 +3,15 @@ You are generating a static landing page for a product.
 - Product description: {{ product_prompt }}
 - Product type: {{ product_type }}
 - Target subdomain: {{ slug }}.{{ root_domain }}
-- Output folder: sites/{{ slug }}/
+- Current working directory: sites/{{ slug }}/ (write all files here; do not create nested `sites/`).
 
 Tasks:
 
-1. If the folder `sites/{{ slug }}/` does not exist, create it and generate:
+1. Ensure the current directory contains:
    - index.html
    - styles.css
    - main.js
-   - Optional images in `sites/{{ slug }}/assets/`.
+   - Optional images in `assets/`.
 
 2. The HTML must:
    - Link the CSS and JS files correctly.
@@ -28,7 +28,7 @@ Tasks:
    - Assume a separate process will generate actual image files.
    - Create placeholder `<img>` tags pointing to `assets/hero.png`, `assets/feature-1.png`, etc.
 
-6. Use the file tools to create and write these files in `sites/{{ slug }}/`.
+6. Use the file tools to create and write these files in the current directory (and its `assets/` subfolder).
    - If files already exist, update them rather than deleting everything unless a full rewrite is needed.
 
 At the end, output a short summary of what you created or changed.
