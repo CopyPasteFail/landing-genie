@@ -132,6 +132,9 @@ def generate_site(slug: str, product_prompt: str, project_root: Path, config: Co
     if not template_path.exists():
         raise FileNotFoundError(f"Prompt template not found at {template_path}")
 
+    site_dir = project_root / "sites" / slug
+    site_dir.mkdir(parents=True, exist_ok=True)
+
     template = template_path.read_text(encoding="utf-8")
     text = (
         template
@@ -141,7 +144,7 @@ def generate_site(slug: str, product_prompt: str, project_root: Path, config: Co
         .replace("{{ product_type }}", "hybrid")
     )
 
-    _run_gemini(text, config.gemini_code_model, config, cwd=project_root)
+    _run_gemini(text, config.gemini_code_model, config, cwd=site_dir)
 
 
 def refine_site(slug: str, feedback: str, project_root: Path, config: Config) -> None:
@@ -150,6 +153,10 @@ def refine_site(slug: str, feedback: str, project_root: Path, config: Config) ->
     if not template_path.exists():
         raise FileNotFoundError(f"Refine prompt template not found at {template_path}")
 
+    site_dir = project_root / "sites" / slug
+    if not site_dir.exists():
+        raise FileNotFoundError(f"Site directory not found: {site_dir}")
+
     template = template_path.read_text(encoding="utf-8")
     text = (
         template
@@ -157,4 +164,4 @@ def refine_site(slug: str, feedback: str, project_root: Path, config: Config) ->
         .replace("{{ feedback }}", feedback)
     )
 
-    _run_gemini(text, config.gemini_code_model, config, cwd=project_root)
+    _run_gemini(text, config.gemini_code_model, config, cwd=site_dir)

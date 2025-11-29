@@ -89,7 +89,9 @@ def new(
             break
         if choice in {"f", "feedback"}:
             feedback = typer.prompt("Enter feedback for Gemini (short, focused):")
+            typer.echo("Stage 1/2: sending feedback to Gemini and regenerating the site...")
             refine_site(slug=slug, feedback=feedback, project_root=root, config=config)
+            typer.echo("Stage 2/2: refreshing the local preview server...")
             url = serve_local(slug=slug, project_root=root)
             typer.echo(f"Updated preview at: {url}")
             if open_browser:

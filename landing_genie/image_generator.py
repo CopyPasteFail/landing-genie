@@ -57,7 +57,7 @@ def _image_prompt(slot: ImageSlot, product_prompt: str) -> str:
     detail = slot.alt or f"{name_hint} for the product landing page"
     prompt_parts = [
         detail,
-        "Marketing-ready illustration, no text overlays, keep backgrounds clean.",
+        "Photorealistic image, no text overlays, keep backgrounds clean.",
     ]
     if context:
         prompt_parts.append(f"Product context: {context}")
