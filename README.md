@@ -36,7 +36,7 @@ pip install -e .
 ```
 
 ### 2) Copy the sample environment file and fill in secrets
-```
+```bash
 cp .env.example .env
 ```
 
@@ -97,6 +97,10 @@ landing-genie new --prompt "Landing page for an AI habit tracking app" --suggest
 
 With `GEMINI_API_KEY` set, `landing-genie new` will also render images for any `assets/*.png` placeholders it finds. Skip with `--no-images` or regenerate later with `landing-genie images <slug>` (add `--overwrite` to replace existing files).
 
+```bash
+landing-genie images dronehit --overwrite --prompt "Landing page for an AI habit tracking app"
+```
+
 ### Tests (light, minimal tokens)
 
 ```bash
@@ -105,6 +109,9 @@ pytest
 
 # Run just the CLI smoke test (uses Gemini CLI with a tiny prompt)
 pytest -s tests/test_gemini_cli.py
+
+# Run just the Cloudflare Pages helper tests (fully mocked; no network)
+pytest tests/test_cloudflare_api.py
 
 # Run just the image smoke test (uses GEMINI_API_KEY once)
 pytest tests/test_image_generation.py
