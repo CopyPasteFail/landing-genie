@@ -12,6 +12,7 @@ import requests
 from .config import Config
 
 API_BASE = "https://api.cloudflare.com/client/v4"
+PRODUCTION_BRANCH = "main"
 _ZONE_CACHE: dict[str, str] = {}
 
 
@@ -120,7 +121,7 @@ def _ensure_project(project_name: str, config: Config) -> dict[str, Any]:
         print(f"Using existing Pages project: {project_name}")
         return existing
 
-    payload = {"name": project_name, "production_branch": "main"}
+    payload = {"name": project_name, "production_branch": PRODUCTION_BRANCH}
     created = _request("POST", f"/accounts/{config.cf_account_id}/pages/projects", config, json=payload)
     print(f"Created Pages project: {project_name}")
     return created
@@ -137,7 +138,7 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
     manifest, upload_files = _build_manifest(site_dir)
     form_fields = {
         "manifest": json.dumps(manifest, separators=(",", ":")),
-        "branch": "production",
+        "branch": PRODUCTION_BRANCH,
         "commit_message": f"Deploy {slug} via landing-genie",
         "commit_dirty": "false",
     }
@@ -197,7 +198,7 @@ def _ensure_dns_record(fqdn: str, target: str, config: Config) -> None:
         print(f"Created DNS CNAME: {fqdn} -> {target}")
 
 
-def ensure_custom_domain(slug: str, project_name: str, config: Config) -> None:
+def ensure_custom_domain(slug: str, project_name: str, config: Config) -> str:
     fqdn = f"{slug}.{config.root_domain}"
     domains_path = f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/domains"
 
@@ -216,3 +217,5 @@ def ensure_custom_domain(slug: str, project_name: str, config: Config) -> None:
     status = (existing or {}).get("status")
     if status and status != "active":
         print(f"Domain verification pending (status: {status}). DNS and TLS may take a few minutes to finalize.")
+
+    return fqdn

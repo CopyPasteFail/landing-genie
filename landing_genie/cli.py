@@ -104,7 +104,8 @@ def deploy(slug: str = typer.Argument(..., help="Slug under sites/ to deploy")) 
     config = Config.load()
     root = _project_root()
     project_name = deploy_to_pages(slug=slug, project_root=root, config=config)
-    ensure_custom_domain(slug=slug, project_name=project_name, config=config)
+    fqdn = ensure_custom_domain(slug=slug, project_name=project_name, config=config)
+    typer.echo(f"Live URL: https://{fqdn}")
 
 
 @app.command()
