@@ -103,8 +103,8 @@ def deploy(slug: str = typer.Argument(..., help="Slug under sites/ to deploy")) 
     """Deploy an existing landing to Cloudflare Pages."""
     config = Config.load()
     root = _project_root()
-    deploy_to_pages(slug=slug, project_root=root, config=config)
-    ensure_custom_domain(slug=slug, config=config)
+    project_name = deploy_to_pages(slug=slug, project_root=root, config=config)
+    ensure_custom_domain(slug=slug, project_name=project_name, config=config)
 
 
 @app.command()

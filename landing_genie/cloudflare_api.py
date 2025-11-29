@@ -69,10 +69,70 @@ def _build_manifest(site_dir: Path) -> Tuple[Dict[str, str], Dict[str, Tuple[str
     return manifest, upload_files
 
 
-def deploy_to_pages(slug: str, project_root: Path, config: Config) -> None:
+def _safe_token(value: str, allow_dash: bool = True) -> str:
+    allowed = []
+    for ch in value.lower():
+        if ch.isalnum():
+            allowed.append(ch)
+        elif allow_dash and ch == "-":
+            allowed.append("-")
+        # ignore anything else
+    cleaned = "".join(allowed).strip("-")
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    return cleaned
+
+
+def _project_name(slug: str, root_domain: str) -> str:
+    slug_part = _safe_token(slug, allow_dash=True)
+    domain_part = _safe_token(root_domain, allow_dash=False)
+    if not slug_part:
+        raise CloudflareAPIError("Slug is empty after sanitizing; cannot form Pages project name.")
+    if not domain_part:
+        raise CloudflareAPIError("Root domain is empty after sanitizing; cannot form Pages project name.")
+
+    name = f"lp-{slug_part}-{domain_part}"
+    if len(name) > 60:
+        raise CloudflareAPIError(f"Pages project name '{name}' exceeds 60 characters; shorten the slug.")
+    return name
+
+
+def _get_project(project_name: str, config: Config) -> dict[str, Any] | None:
+    url = f"{API_BASE}/accounts/{config.cf_account_id}/pages/projects/{project_name}"
+    resp = requests.get(url, headers=_headers(config), timeout=60)
+    if resp.status_code == 404:
+        return None
+    if resp.status_code != 200:
+        raise CloudflareAPIError(
+            f"Cloudflare API GET {url} failed ({resp.status_code}): {resp.text}"
+        )
+    data = resp.json()
+    if not data.get("success"):
+        errors = data.get("errors") or []
+        message = "; ".join(err.get("message", "") for err in errors if isinstance(err, dict)) or resp.text
+        raise CloudflareAPIError(f"Cloudflare API GET {url} failed: {message}")
+    return data.get("result")
+
+
+def _ensure_project(project_name: str, config: Config) -> dict[str, Any]:
+    existing = _get_project(project_name, config)
+    if existing:
+        print(f"Using existing Pages project: {project_name}")
+        return existing
+
+    payload = {"name": project_name, "production_branch": "main"}
+    created = _request("POST", f"/accounts/{config.cf_account_id}/pages/projects", config, json=payload)
+    print(f"Created Pages project: {project_name}")
+    return created
+
+
+def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
     site_dir = project_root / "sites" / slug
     if not site_dir.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
+
+    project_name = _project_name(slug, config.root_domain)
+    _ensure_project(project_name, config)
 
     manifest, upload_files = _build_manifest(site_dir)
     form_fields = {
@@ -82,7 +142,7 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> None:
         "commit_dirty": "false",
     }
 
-    path = f"/accounts/{config.cf_account_id}/pages/projects/{config.cf_pages_project}/deployments"
+    path = f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/deployments"
     result = _request("POST", path, config, data=form_fields, files=upload_files)
 
     deployment_id = result.get("id")
@@ -93,6 +153,8 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> None:
     latest_stage = result.get("latest_stage", {})
     if latest_stage:
         print(f"Status: {latest_stage.get('status')} @ {latest_stage.get('ended_on') or latest_stage.get('started_on')}")
+    # Pass project name back to caller for domain + DNS wiring.
+    return project_name
 
 
 def _get_zone_id(config: Config) -> str:
@@ -135,9 +197,9 @@ def _ensure_dns_record(fqdn: str, target: str, config: Config) -> None:
         print(f"Created DNS CNAME: {fqdn} -> {target}")
 
 
-def ensure_custom_domain(slug: str, config: Config) -> None:
+def ensure_custom_domain(slug: str, project_name: str, config: Config) -> None:
     fqdn = f"{slug}.{config.root_domain}"
-    domains_path = f"/accounts/{config.cf_account_id}/pages/projects/{config.cf_pages_project}/domains"
+    domains_path = f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/domains"
 
     domains = _request("GET", domains_path, config) or []
     existing = next((d for d in domains if d.get("name") == fqdn), None)
@@ -148,7 +210,7 @@ def ensure_custom_domain(slug: str, config: Config) -> None:
         existing = _request("POST", domains_path, config, json={"name": fqdn})
         print(f"Added custom domain: {fqdn} (status: {existing.get('status')})")
 
-    pages_hostname = f"{config.cf_pages_project}.pages.dev"
+    pages_hostname = f"{project_name}.pages.dev"
     _ensure_dns_record(fqdn=fqdn, target=pages_hostname, config=config)
 
     status = (existing or {}).get("status")

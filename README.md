@@ -9,7 +9,7 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 - Git (for cloning) and a POSIX shell (examples assume bash/zsh; PowerShell works with equivalent commands)
 - A domain you own, already moved to Cloudflare (nameservers pointing at Cloudflare)
 - Cloudflare account with:
-  - Account ID and Pages project name ready (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PAGES_PROJECT`)
+  - Account ID (`CLOUDFLARE_ACCOUNT_ID`)
   - API token with **Pages:Edit** and **DNS:Edit** permissions for that account (`CLOUDFLARE_API_TOKEN`)
 - Gemini CLI installed and configured (see https://geminicli.com/docs/get-started/deployment/). Text prompts run via the CLI using its own auth (login recommended); set `GEMINI_ALLOW_CLI_API_KEY=1` only if you want the CLI to use your API key as well.
 - Billing-enabled `GEMINI_API_KEY` **only** for image generation (Python client). This key is not passed to the CLI by default so text requests stay on the non-billed flow.
@@ -39,7 +39,6 @@ Edit `.env`:
 - `ROOT_DOMAIN=your-domain.tld` (the domain in Cloudflare)
 - `CLOUDFLARE_ACCOUNT_ID=...`
 - `CLOUDFLARE_API_TOKEN=...` (token with Pages+DNS edit)
-- `CLOUDFLARE_PAGES_PROJECT=...` (existing or new Pages project)
 - `GEMINI_CODE_MODEL=...` / `GEMINI_IMAGE_MODEL=...` (optional overrides)
 - `GEMINI_CLI_COMMAND=gemini` (default: `gemini`; change if your CLI is named differently)
 - `GEMINI_ALLOW_CLI_API_KEY=0` (default: `0`; set to `1` only if you want the CLI to consume `GEMINI_API_KEY`)
@@ -87,7 +86,7 @@ Notes:
   Generate a new landing using Gemini CLI, serve it locally for review, and allow iterative refinements.
 
 - `landing-genie deploy <slug>`  
-  Deploy an existing landing under `sites/<slug>` to Cloudflare Pages and attach the custom subdomain on your root domain. (Currently a stub that prints what would be deployed—fill in Cloudflare API or wrangler steps.)
+  Deploy an existing landing under `sites/<slug>` to Cloudflare Pages, creating a dedicated Pages project named `lp-<slug>-<rootdomain>` (e.g., `lp-smart-forget-ailablife`) and attaching the custom subdomain on your root domain.
 
 - `landing-genie images <slug>`  
   Generate images for an existing landing using your `GEMINI_API_KEY` (skips existing files unless `--overwrite` is passed).
@@ -103,7 +102,7 @@ Notes:
 - Prompts used for generation live under `prompts/`; adjust them to steer tone and structure.
 - `.gemini/` holds Gemini CLI configs; keep it in sync with your model choices and auth method.
 - Cloudflare must manage the DNS for your `ROOT_DOMAIN`; if nameservers are not pointed to Cloudflare, custom subdomains will not resolve.
-- `deploy` and `ensure_custom_domain` are scaffolds; wire them to the Cloudflare Pages API or wrangler when you’re ready to ship for real.
+- Deploys create a new Cloudflare Pages project per subdomain automatically; no need to pre-create one.
 
 ## Appendix: Gemini API key and billing
 
@@ -131,10 +130,8 @@ Notes:
 - At your registrar (e.g., GoDaddy/Namecheap/Google Domains), replace existing nameservers with the two from Cloudflare.  
 - Wait for propagation (often minutes, can be up to 24h). Your domain must now be “Active” in Cloudflare for Pages + DNS automation to work.
 
-2) Create a Cloudflare Pages project (one-time)  
-- In Cloudflare dashboard: `Workers & Pages` → `Create application` → `Pages project`.  
-- Choose a project name (use the same value for `CLOUDFLARE_PAGES_PROJECT`). You can start with “Direct Upload” and skip connecting a repo for now.  
-- Note your Cloudflare Account ID from the overview URL or the dashboard (set `CLOUDFLARE_ACCOUNT_ID`).
+2) Cloudflare Pages projects are auto-created  
+- landing-genie creates a new Pages project for each subdomain (pattern `lp-<slug>-<rootdomain>`). No manual project setup required.
 
 3) Create an API token with scoped permissions  
 - Dashboard: `My Profile` → `API Tokens` → `Create Token` → `Create Custom Token`.  
@@ -147,5 +144,5 @@ Notes:
 
 4) Confirm DNS and Pages readiness  
 - In Cloudflare DNS, ensure your root domain records are present.  
-- Custom subdomains created by this tool will be added as DNS records (via API) pointing to your Pages project.  
+- Custom subdomains created by this tool will be added as DNS records (via API) pointing to the Pages project created for that subdomain.  
 - If nameservers aren’t pointed to Cloudflare, the automated DNS step will fail.
