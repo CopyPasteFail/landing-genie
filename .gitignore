@@ -6,7 +6,6 @@ build/
 *.egg-info/
 .env
 *.log
-sites/
 .idea/
 .vscode/
 node_modules/

@@ -8,7 +8,8 @@
   "telemetry": {
     "enabled": true,
     "logPrompts": false,
-    "target": "local"
+    "target": "local",
+    "otlpEndpoint": ""
   },
   "$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json",
   "tools": {

@@ -10,6 +10,7 @@ import typer
 
 from .config import Config
 from .gemini_runner import generate_site, refine_site
+from .image_generator import generate_images_for_site
 from .preview import serve_local
 from .cloudflare_api import deploy_to_pages, ensure_custom_domain
 
@@ -32,17 +33,14 @@ def init() -> None:
         typer.echo("Create a .env file based on .env.example and try again.")
         raise typer.Exit(code=1)
 
-    sites_dir = _project_root() / "sites"
-    sites_dir.mkdir(exist_ok=True)
-    (sites_dir / ".gitignore").write_text("*\n!*/\n", encoding="utf-8")
-    typer.echo(f"Sites directory ensured at {sites_dir}")
-
 
 @app.command()
 def new(
     prompt: str = typer.Option(..., "--prompt", "-p", help="Product description and target audience"),
     suggested_subdomain: Optional[str] = typer.Option(None, "--suggested-subdomain", "-s"),
     open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser"),
+    generate_images: bool = typer.Option(True, "--images/--no-images", help="Generate images with GEMINI_API_KEY after creating the site"),
+    overwrite_images: bool = typer.Option(False, "--overwrite-images", help="Regenerate images even if files already exist"),
 ) -> None:
     """Generate a new landing page with Gemini CLI."""
     config = Config.load()
@@ -53,6 +51,28 @@ def new(
 
     typer.echo(f"Using slug: {slug}")
     generate_site(slug=slug, product_prompt=prompt, project_root=root, config=config)
+
+    if generate_images:
+        api_key_present = config.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        if not api_key_present:
+            typer.echo("GEMINI_API_KEY not set; skipping image generation.")
+        else:
+            try:
+                created = generate_images_for_site(
+                    slug=slug,
+                    product_prompt=prompt,
+                    project_root=root,
+                    config=config,
+                    overwrite=overwrite_images,
+                )
+                if created:
+                    typer.echo("Generated images:")
+                    for path in created:
+                        typer.echo(f"- {path}")
+                else:
+                    typer.echo("No image placeholders found or images already existed; skipping generation.")
+            except Exception as exc:
+                typer.echo(f"Image generation skipped: {exc}")
 
     url = serve_local(slug=slug, project_root=root)
     typer.echo(f"Preview URL: {url}")
@@ -85,6 +105,42 @@ def deploy(slug: str = typer.Argument(..., help="Slug under sites/ to deploy")) 
     root = _project_root()
     deploy_to_pages(slug=slug, project_root=root, config=config)
     ensure_custom_domain(slug=slug, config=config)
+
+
+@app.command()
+def images(
+    slug: str = typer.Argument(..., help="Slug under sites/ to generate images for"),
+    prompt: Optional[str] = typer.Option(None, "--prompt", "-p", help="Product description used to guide the images"),
+    overwrite: bool = typer.Option(False, "--overwrite/--keep-existing", help="Regenerate even if image files exist"),
+) -> None:
+    """Generate images for an existing landing using Gemini's image model."""
+    config = Config.load()
+    root = _project_root()
+    api_key_present = config.gemini_api_key or os.getenv("GEMINI_API_KEY")
+    if not api_key_present:
+        typer.echo("GEMINI_API_KEY not set; cannot generate images. Export it and retry.")
+        raise typer.Exit(code=1)
+
+    product_prompt = prompt or typer.prompt("Enter a short product description to guide the images")
+
+    try:
+        created = generate_images_for_site(
+            slug=slug,
+            product_prompt=product_prompt,
+            project_root=root,
+            config=config,
+            overwrite=overwrite,
+        )
+    except Exception as exc:
+        typer.echo(f"Image generation failed: {exc}")
+        raise typer.Exit(code=1)
+
+    if created:
+        typer.echo("Generated images:")
+        for path in created:
+            typer.echo(f"- {path}")
+    else:
+        typer.echo("No image placeholders found or images already existed; nothing to do.")
 
 
 @app.command()
