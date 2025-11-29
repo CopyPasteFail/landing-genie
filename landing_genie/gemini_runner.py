@@ -4,12 +4,12 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional, cast
 
 from .config import Config
 
 
-def _iter_json_objects(text: str) -> Iterator[dict]:
+def _iter_json_objects(text: str) -> Iterator[dict[str, Any]]:
     """Yield JSON objects from a stream that may contain multiple blobs and noise."""
     decoder = json.JSONDecoder()
     idx = 0
@@ -37,30 +37,52 @@ def _extract_usage(stdout: str, model: str) -> tuple[Optional[int], Optional[int
     first, then fall back to regex against the raw text for inspected output that
     isn't valid JSON (e.g., single-quoted).
     """
-    found_prompt = found_completion = found_total = None
+    found_prompt: Optional[int] = None
+    found_completion: Optional[int] = None
+    found_total: Optional[int] = None
+
+    def _int_or_none(value: Any) -> Optional[int]:
+        return value if isinstance(value, int) else None
 
     for obj in _iter_json_objects(stdout):
         usage = obj.get("usageMetadata")
-        if usage:
+        if isinstance(usage, dict):
+            usage_dict = cast(dict[str, Any], usage)
             return (
-                usage.get("promptTokenCount"),
-                usage.get("candidatesTokenCount"),
-                usage.get("totalTokenCount"),
+                _int_or_none(usage_dict.get("promptTokenCount")),
+                _int_or_none(usage_dict.get("candidatesTokenCount")),
+                _int_or_none(usage_dict.get("totalTokenCount")),
             )
 
-        stats = obj.get("stats", {})
-        model_stats = stats.get("models", {}).get(model, {})
-        tokens = model_stats.get("tokens", {})
+        stats = obj.get("stats")
+        model_stats: dict[str, Any] = {}
+        if isinstance(stats, dict):
+            stats_dict = cast(dict[str, Any], stats)
+            models = stats_dict.get("models")
+            if isinstance(models, dict):
+                models_dict = cast(dict[str, Any], models)
+                model_entry = models_dict.get(model)
+                if isinstance(model_entry, dict):
+                    model_stats = cast(dict[str, Any], model_entry)
+
+        tokens: dict[str, Any] = {}
+        tokens_entry = model_stats.get("tokens")
+        if isinstance(tokens_entry, dict):
+            tokens = cast(dict[str, Any], tokens_entry)
         if tokens:
             return (
-                tokens.get("input") or tokens.get("prompt"),
-                tokens.get("output") or tokens.get("completion"),
-                tokens.get("total"),
+                _int_or_none(tokens.get("input") or tokens.get("prompt")),
+                _int_or_none(tokens.get("output") or tokens.get("completion")),
+                _int_or_none(tokens.get("total")),
             )
 
         attrs = obj.get("attributes", {})
-        input_tokens = attrs.get("gen_ai.usage.input_tokens")
-        output_tokens = attrs.get("gen_ai.usage.output_tokens")
+        if isinstance(attrs, dict):
+            attrs_dict = cast(dict[str, Any], attrs)
+            input_tokens = _int_or_none(attrs_dict.get("gen_ai.usage.input_tokens"))
+            output_tokens = _int_or_none(attrs_dict.get("gen_ai.usage.output_tokens"))
+        else:
+            input_tokens = output_tokens = None
         if input_tokens is not None or output_tokens is not None:
             total_tokens = None
             if input_tokens is not None and output_tokens is not None:
@@ -74,9 +96,9 @@ def _extract_usage(stdout: str, model: str) -> tuple[Optional[int], Optional[int
         match = re.search(pattern, stdout, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
         return int(match.group(1)) if match else None
 
-    prompt_tokens = found_prompt or _m(r"promptTokenCount['\"]?\s*[:=]\s*(\d+)")
-    completion_tokens = found_completion or _m(r"(?:candidatesTokenCount|output_tokens)['\"]?\s*[:=]\s*(\d+)")
-    total_tokens = found_total or _m(r"totalTokenCount['\"]?\s*[:=]\s*(\d+)")
+    prompt_tokens: Optional[int] = found_prompt or _m(r"promptTokenCount['\"]?\s*[:=]\s*(\d+)")
+    completion_tokens: Optional[int] = found_completion or _m(r"(?:candidatesTokenCount|output_tokens)['\"]?\s*[:=]\s*(\d+)")
+    total_tokens: Optional[int] = found_total or _m(r"totalTokenCount['\"]?\s*[:=]\s*(\d+)")
 
     if total_tokens is None:
         total_tokens = _m(r"tokens[^{}]*?total['\"]?\s*[:=]\s*(\d+)")

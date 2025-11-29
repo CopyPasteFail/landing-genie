@@ -4,6 +4,7 @@ import http.server
 import socketserver
 from pathlib import Path
 from threading import Thread
+from typing import Any
 
 
 def serve_local(slug: str, project_root: Path, port: int = 4173) -> str:
@@ -12,7 +13,7 @@ def serve_local(slug: str, project_root: Path, port: int = 4173) -> str:
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
 
     class Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, directory=str(site_dir), **kwargs)
 
     def _run() -> None:

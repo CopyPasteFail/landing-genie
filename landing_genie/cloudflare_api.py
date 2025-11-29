@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 import requests
 
@@ -90,6 +89,41 @@ def _project_name(slug: str, root_domain: str) -> str:
     return name
 
 
+def _get_pages_project(project_name: str, config: Config) -> dict[str, Any] | None:
+    """
+    Return project details if it exists, otherwise None.
+    """
+    path = f"/accounts/{config.cf_account_id}/pages/projects/{project_name}"
+    url = f"{API_BASE}{path}"
+    resp = requests.get(url, headers=_headers(config), timeout=60)
+    if resp.status_code == 404:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        raise CloudflareAPIError(
+            f"Cloudflare API GET {path} returned non-JSON response: "
+            f"{resp.status_code} {resp.text}"
+        )
+    if not resp.ok or not data.get("success", True):
+        raise CloudflareAPIError(
+            f"Cloudflare API GET {path} failed: {resp.status_code} {data}"
+        )
+    return data.get("result", data)
+
+
+def _ensure_pages_project(project_name: str, config: Config) -> None:
+    """
+    Create the Pages project if it does not already exist.
+    """
+    if _get_pages_project(project_name, config):
+        return
+
+    path = f"/accounts/{config.cf_account_id}/pages/projects"
+    payload = {"name": project_name, "production_branch": PRODUCTION_BRANCH}
+    _request("POST", path, config, json=payload)
+
+
 # ---------------------------------------------------------------------------
 # Deployment via Wrangler (direct upload of folder)
 # ---------------------------------------------------------------------------
@@ -116,6 +150,10 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
     env = os.environ.copy()
     env["CLOUDFLARE_ACCOUNT_ID"] = config.cf_account_id
     env["CLOUDFLARE_API_TOKEN"] = config.cf_api_token
+
+    # Wrangler prompts to create a project when it does not exist; make that
+    # non-interactive by creating it via the API first.
+    _ensure_pages_project(project_name, config)
 
     # Use npx so you do not have to install wrangler globally;
     # if you prefer a global `wrangler`, just change the command list.
@@ -178,16 +216,16 @@ def _ensure_dns_record(*, fqdn: str, target: str, config: Config) -> None:
     zone_id = _find_zone_id(config)
     base_path = f"/zones/{zone_id}/dns_records"
 
-    records = _request(
+    records: List[Dict[str, Any]] = _request(
         "GET",
         base_path,
         config,
         params={"name": fqdn, "type": "CNAME"},
     )
 
-    existing = records[0] if records else None
+    existing: Dict[str, Any] | None = records[0] if records else None
 
-    payload = {
+    payload: Dict[str, str | bool] = {
         "type": "CNAME",
         "name": fqdn,
         "content": target,
@@ -218,29 +256,34 @@ def ensure_custom_domain(*, slug: str, project_name: str, config: Config) -> str
         f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/domains"
     )
 
-    domains = _request("GET", domains_path, config)
-    existing = None
+    domains: List[Dict[str, Any]] = _request("GET", domains_path, config)
+    existing: Dict[str, Any] | None = None
     for d in domains:
         if d.get("name") == fqdn:
             existing = d
             break
 
+    domain: Dict[str, Any]
     if existing:
+        domain = existing
         print(
             f"Custom domain already configured: {fqdn} "
-            f"(status: {existing.get('status')})"
+            f"(status: {domain.get('status')})"
         )
     else:
-        existing = _request("POST", domains_path, config, json={"name": fqdn})
+        domain: Dict[str, Any] = _request(
+            "POST", domains_path, config, json={"name": fqdn}
+        )
+        existing = domain
         print(
             f"Added custom domain: {fqdn} "
-            f"(status: {existing.get('status')})"
+            f"(status: {domain.get('status')})"
         )
 
     pages_hostname = f"{project_name}.pages.dev"
     _ensure_dns_record(fqdn=fqdn, target=pages_hostname, config=config)
 
-    status = (existing or {}).get("status")
+    status: str | None = cast(str | None, domain.get("status"))
     if status and status != "active":
         print(
             "Domain verification pending "

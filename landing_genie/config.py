@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass
+from typing import Literal, overload
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,7 +20,19 @@ class Config:
 
     @classmethod
     def load(cls) -> "Config":
-        def _get(name: str, required: bool = True, default: str | None = None) -> str | None:
+        @overload
+        def _get(name: str, *, required: Literal[True] = True, default: None = None) -> str:
+            ...
+
+        @overload
+        def _get(name: str, *, required: Literal[False], default: str) -> str:
+            ...
+
+        @overload
+        def _get(name: str, *, required: Literal[False], default: None = None) -> str | None:
+            ...
+
+        def _get(name: str, *, required: bool = True, default: str | None = None) -> str | None:
             value = os.getenv(name)
             if value is None:
                 value = default

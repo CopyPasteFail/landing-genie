@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, TypedDict, cast
 
 import requests
 
@@ -68,26 +68,70 @@ def _image_prompt(slot: ImageSlot, product_prompt: str) -> str:
     return " ".join(prompt_parts)
 
 
-def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, Optional[dict]]:
+class _PartPayload(TypedDict):
+    text: str
+
+
+class _ContentPayload(TypedDict):
+    role: str
+    parts: list[_PartPayload]
+
+
+class _GenerationConfig(TypedDict):
+    responseModalities: list[str]
+
+
+class _UsageMetadata(TypedDict, total=False):
+    promptTokenCount: int
+    candidatesTokenCount: int
+    totalTokenCount: int
+
+
+class _InlineData(TypedDict):
+    data: str
+
+
+class _PartResponse(TypedDict, total=False):
+    inlineData: _InlineData
+    inline_data: _InlineData
+
+
+class _ContentResponse(TypedDict):
+    parts: list[_PartResponse]
+
+
+class _CandidateResponse(TypedDict):
+    content: _ContentResponse
+
+
+class _GenerateContentResponse(TypedDict, total=False):
+    candidates: list[_CandidateResponse]
+    usageMetadata: _UsageMetadata
+
+
+def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, _UsageMetadata | None]:
     # Use responseModalities for the Gemini 3 image models (responseMimeType is rejected with
     # INVALID_ARGUMENT on those preview endpoints).
-    generation_config = {"responseModalities": ["IMAGE"]}
+    generation_config: _GenerationConfig = {"responseModalities": ["IMAGE"]}
+
+    contents: list[_ContentPayload] = [{"role": "user", "parts": [{"text": prompt}]}]
+    payload: dict[str, object] = {"contents": contents, "generationConfig": generation_config}
 
     resp = requests.post(
         _API_URL.format(model=model),
         params={"key": api_key},
-        json={
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": generation_config,
-        },
+        json=payload,
         timeout=120,
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Gemini image request failed: {resp.status_code} {resp.text}")
 
-    data = resp.json()
+    data = cast(_GenerateContentResponse, resp.json())
     try:
-        part = data["candidates"][0]["content"]["parts"][0]
+        candidates = data.get("candidates")
+        if not candidates:
+            raise KeyError("candidates")
+        part = candidates[0]["content"]["parts"][0]
         inline = part.get("inlineData") or part.get("inline_data")
         if not inline:
             raise KeyError("inlineData")
