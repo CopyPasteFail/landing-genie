@@ -23,6 +23,8 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 
 ## Setup
 
+### 1) Clone and prepare Python
+
 ```bash
 git clone <your-repo-url> landing-genie
 cd landing-genie
@@ -31,7 +33,10 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 
 pip install -e .
+```
 
+### 2) Copy the sample environment file and fill in secrets
+```
 cp .env.example .env
 ```
 
@@ -44,6 +49,39 @@ Edit `.env`:
 - `GEMINI_ALLOW_CLI_API_KEY=0` (default: `0`; set to `1` only if you want the CLI to consume `GEMINI_API_KEY`)
 - `GEMINI_API_KEY=` (enable image generation via Python; not passed to the CLI unless `GEMINI_ALLOW_CLI_API_KEY=1`)
 - `GEMINI_TELEMETRY_OTLP_ENDPOINT=` (optional OTLP collector endpoint; landing-genie sets this for CLI runs, while `.gemini/settings.json` keeps `otlpEndpoint` blank so ad-hoc CLI usage stays quiet)
+
+### 4) Prepare NVM
+
+```bash
+nvm install 20.19.4
+source ~/.nvm/nvm.sh
+nvm use 20.19.4
+
+```
+
+> **Node version auto-switching**  
+> The repo pins a version of Node in `.nvmrc`.
+> For bash shells, append this helper to `~/.bashrc`:
+> ```bash
+> cat <<'EOF' >> ~/.bashrc
+> load-nvmrc() {
+>   local nvmrc="$PWD/.nvmrc"
+>   if [ -f "$nvmrc" ]; then
+>     nvm use --silent >/dev/null 2>&1 || nvm install
+>   fi
+> }
+> export PROMPT_COMMAND="load-nvmrc${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+> load-nvmrc
+> EOF
+> ```
+
+### 5) Deploy the generated public/ folder to Cloudflare Pages
+Direct Upload via Wrangler
+
+```bash
+npm install -g wrangler@4.49.0
+```
+
 
 ## Quick start
 
@@ -146,3 +184,83 @@ Notes:
 - In Cloudflare DNS, ensure your root domain records are present.  
 - Custom subdomains created by this tool will be added as DNS records (via API) pointing to the Pages project created for that subdomain.  
 - If nameservers aren’t pointed to Cloudflare, the automated DNS step will fail.
+
+## Why we switched from the raw Cloudflare Pages API to Wrangler
+
+### Summary
+The first implementation tried to deploy files directly using Cloudflare’s low-level Pages API. That path looks simple on paper, but in reality it is under-documented, fragile, and extremely easy to break in subtle ways. After multiple failures and inconsistent responses from the API, the deployment flow was replaced with a stable, supported mechanism: invoking **Wrangler** to handle the upload.
+
+This change made deployments reliable and dramatically reduced the amount of custom logic needed in the codebase.
+
+---
+
+### The core issues with the raw API
+
+Cloudflare Pages exposes HTTP endpoints that *look* like they let you upload static assets directly, but these endpoints are not fully documented and appear to exist primarily for internal use by Wrangler. Because of that:
+
+- Small mistakes in the POST body or multipart formatting cause silent or vague failures.
+- The API often accepts a deployment but does *not* attach the uploaded files, leading to pages that exist in the dashboard but serve 404 or empty responses.
+- Error messages are generic and do not point to what is actually wrong.
+- The expected multipart field shapes differ from example to example, making debugging guesswork.
+
+This makes it extremely brittle to reimplement the uploader.
+
+---
+
+### What specifically broke
+
+1. **Incorrect multipart field naming**
+   - The manifest maps file paths to content hashes.
+   - Cloudflare expects each file upload part to use the *hash* as the field name, not the file path.
+   - Our initial implementation sent files under their filenames (`index.html`, `styles.css`), so Cloudflare could not match any assets to the manifest.
+
+2. **Undocumented internal endpoints**
+   - Endpoints like `/pages/assets/upload`, `/pages/assets/upsert-hashes`, and `/deployments` have no stable public schema.
+   - Different sources show inconsistent JSON formats.
+   - Even minor mismatches caused Cloudflare to return “Request body is incorrect” or to create a deployment with no assets.
+
+3. **Dashboard mismatch**
+   - The dashboard UI showed a successful deployment and listed files.
+   - But the underlying asset store did not receive the blobs, so visiting the site returned a blank/404 response.
+   - This makes debugging even harder because the UI suggests everything is fine.
+
+Overall: reimplementing this workflow manually is error-prone and not worth the ongoing maintenance.
+
+---
+
+### Why Wrangler solves all of it
+
+Wrangler is Cloudflare’s official CLI tool, and it already implements the entire asset-upload pipeline correctly:
+
+- It calculates hashes exactly as Cloudflare expects.
+- It uploads blobs to the correct internal asset store.
+- It creates deployments with the correct manifest format.
+- It is stable, supported, and kept in sync with Cloudflare’s backend.
+- If something breaks, Wrangler gives useful logs and is easy to run manually for debugging.
+
+By shelling out to:
+
+```bash
+npx wrangler pages deploy <folder> --project-name=<name> --branch=main
+```
+
+the tool delegates all the fragile low-level upload logic to Cloudflare itself. Our app only needs to:
+
+- Provide the folder path
+- Set the correct environment variables
+- Configure the custom domain afterward
+
+No reverse-engineering, no guessing multipart structures, no manifest construction by hand.
+
+---
+
+### Result
+
+Using Wrangler:
+
+- Deployments are consistent and predictable.
+- Every subdomain correctly serves its unique content.
+- The codebase is simpler, smaller, and far easier to maintain.
+- Cloudflare handles all the complexity of asset uploading.
+
+This is why the project moved from raw API calls to a Wrangler-based deployment flow.

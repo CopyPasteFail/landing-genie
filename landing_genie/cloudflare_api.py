@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import io
 import json
-import mimetypes
+import os
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, List
 
 import requests
 
@@ -17,205 +16,235 @@ _ZONE_CACHE: dict[str, str] = {}
 
 
 class CloudflareAPIError(RuntimeError):
-    """Raised when Cloudflare responds with an error."""
+    """Raised when Cloudflare responds with an error or Wrangler fails."""
 
 
-def _headers(config: Config) -> dict[str, str]:
+def _headers(config: Config) -> Dict[str, str]:
     return {"Authorization": f"Bearer {config.cf_api_token}"}
 
 
 def _request(method: str, path: str, config: Config, **kwargs: Any) -> Any:
+    """
+    Generic Cloudflare API helper.
+
+    Returns the `result` field on success and raises CloudflareAPIError on
+    HTTP error or when `success` is false.
+    """
     url = f"{API_BASE}{path}"
     headers = kwargs.pop("headers", {})
     headers.update(_headers(config))
 
-    response = requests.request(method, url, headers=headers, timeout=60, **kwargs)
+    resp = requests.request(method, url, headers=headers, timeout=60, **kwargs)
     try:
-        data = response.json()
-    except ValueError as exc:  # pragma: no cover - only hit on non-JSON responses
+        data = resp.json()
+    except ValueError:
         raise CloudflareAPIError(
-            f"Cloudflare API {method} {path} failed with status {response.status_code}: {response.text}"
-        ) from exc
+            f"Cloudflare API {method} {path} returned non-JSON response: "
+            f"{resp.status_code} {resp.text}"
+        )
 
-    if not data.get("success"):
-        errors = data.get("errors") or []
-        message = "; ".join(err.get("message", "") for err in errors if isinstance(err, dict)) or response.text
-        raise CloudflareAPIError(f"Cloudflare API {method} {path} failed ({response.status_code}): {message}")
+    if not resp.ok or not data.get("success", True):
+        raise CloudflareAPIError(
+            f"Cloudflare API {method} {path} failed: {resp.status_code} {data}"
+        )
 
-    return data.get("result")
-
-
-def _iter_files(site_dir: Path) -> Iterable[Tuple[str, bytes]]:
-    """Yield (relative_path, content) tuples for all files under site_dir."""
-    for path in sorted(site_dir.rglob("*")):
-        if path.is_file():
-            rel_path = path.relative_to(site_dir).as_posix()
-            yield rel_path, path.read_bytes()
+    return data.get("result", data)
 
 
-def _build_manifest(site_dir: Path) -> Tuple[Dict[str, str], Dict[str, Tuple[str, io.BytesIO, str]]]:
-    manifest: Dict[str, str] = {}
-    upload_files: Dict[str, Tuple[str, io.BytesIO, str]] = {}
-
-    for rel_path, content in _iter_files(site_dir):
-        digest = hashlib.sha256(content).hexdigest()
-        manifest[rel_path] = digest
-
-        mime, _ = mimetypes.guess_type(rel_path)
-        upload_files[rel_path] = (rel_path, io.BytesIO(content), mime or "application/octet-stream")
-
-    if not upload_files:
-        raise CloudflareAPIError(f"No deployable files found under {site_dir}")
-
-    return manifest, upload_files
+# ---------------------------------------------------------------------------
+# Project naming (one Pages project per slug)
+# ---------------------------------------------------------------------------
 
 
-def _safe_token(value: str, allow_dash: bool = True) -> str:
-    allowed = []
-    for ch in value.lower():
-        if ch.isalnum():
-            allowed.append(ch)
-        elif allow_dash and ch == "-":
-            allowed.append("-")
-        # ignore anything else
-    cleaned = "".join(allowed).strip("-")
-    while "--" in cleaned:
-        cleaned = cleaned.replace("--", "-")
+def _sanitize_slug(slug: str) -> str:
+    out: List[str] = []
+    for ch in slug.lower():
+        if ch.isalnum() or ch == "-":
+            out.append(ch)
+        elif ch in {" ", "_", "/"}:
+            out.append("-")
+    cleaned = "".join(out).strip("-")
+    return cleaned or "site"
+
+
+def _sanitize_domain_for_project(root_domain: str) -> str:
+    out: List[str] = []
+    for ch in root_domain.lower():
+        if ch.isalnum() or ch == "-":
+            out.append(ch)
+    cleaned = "".join(out)
+    if not cleaned:
+        raise CloudflareAPIError(
+            "Root domain is empty after sanitizing; cannot form project name"
+        )
     return cleaned
 
 
 def _project_name(slug: str, root_domain: str) -> str:
-    slug_part = _safe_token(slug, allow_dash=True)
-    domain_part = _safe_token(root_domain, allow_dash=False)
-    if not slug_part:
-        raise CloudflareAPIError("Slug is empty after sanitizing; cannot form Pages project name.")
-    if not domain_part:
-        raise CloudflareAPIError("Root domain is empty after sanitizing; cannot form Pages project name.")
-
+    slug_part = _sanitize_slug(slug)
+    domain_part = _sanitize_domain_for_project(root_domain)
     name = f"lp-{slug_part}-{domain_part}"
+    # Cloudflare Pages project name limit is 60 chars
     if len(name) > 60:
-        raise CloudflareAPIError(f"Pages project name '{name}' exceeds 60 characters; shorten the slug.")
+        name = name[:60]
     return name
 
 
-def _get_project(project_name: str, config: Config) -> dict[str, Any] | None:
-    url = f"{API_BASE}/accounts/{config.cf_account_id}/pages/projects/{project_name}"
-    resp = requests.get(url, headers=_headers(config), timeout=60)
-    if resp.status_code == 404:
-        return None
-    if resp.status_code != 200:
-        raise CloudflareAPIError(
-            f"Cloudflare API GET {url} failed ({resp.status_code}): {resp.text}"
-        )
-    data = resp.json()
-    if not data.get("success"):
-        errors = data.get("errors") or []
-        message = "; ".join(err.get("message", "") for err in errors if isinstance(err, dict)) or resp.text
-        raise CloudflareAPIError(f"Cloudflare API GET {url} failed: {message}")
-    return data.get("result")
-
-
-def _ensure_project(project_name: str, config: Config) -> dict[str, Any]:
-    existing = _get_project(project_name, config)
-    if existing:
-        print(f"Using existing Pages project: {project_name}")
-        return existing
-
-    payload = {"name": project_name, "production_branch": PRODUCTION_BRANCH}
-    created = _request("POST", f"/accounts/{config.cf_account_id}/pages/projects", config, json=payload)
-    print(f"Created Pages project: {project_name}")
-    return created
+# ---------------------------------------------------------------------------
+# Deployment via Wrangler (direct upload of folder)
+# ---------------------------------------------------------------------------
 
 
 def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
+    """
+    Deploy sites/<slug>/ to Cloudflare Pages using Wrangler.
+
+    This is equivalent to:
+      CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=... \
+        npx wrangler pages deploy sites/<slug> \
+          --project-name=<derived_name> \
+          --branch=main
+
+    Returns the Pages project name (used for custom-domain wiring).
+    """
     site_dir = project_root / "sites" / slug
-    if not site_dir.exists():
-        raise FileNotFoundError(f"Site directory not found: {site_dir}")
+    if not site_dir.is_dir():
+        raise CloudflareAPIError(f"Site directory does not exist: {site_dir}")
 
     project_name = _project_name(slug, config.root_domain)
-    _ensure_project(project_name, config)
 
-    manifest, upload_files = _build_manifest(site_dir)
-    form_fields = {
-        "manifest": json.dumps(manifest, separators=(",", ":")),
-        "branch": PRODUCTION_BRANCH,
-        "commit_message": f"Deploy {slug} via landing-genie",
-        "commit_dirty": "false",
-    }
+    env = os.environ.copy()
+    env["CLOUDFLARE_ACCOUNT_ID"] = config.cf_account_id
+    env["CLOUDFLARE_API_TOKEN"] = config.cf_api_token
 
-    path = f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/deployments"
-    result = _request("POST", path, config, data=form_fields, files=upload_files)
+    # Use npx so you do not have to install wrangler globally;
+    # if you prefer a global `wrangler`, just change the command list.
+    cmd = [
+        "npx",
+        "wrangler",
+        "pages",
+        "deploy",
+        str(site_dir),
+        f"--project-name={project_name}",
+        "--branch",
+        PRODUCTION_BRANCH,
+    ]
 
-    deployment_id = result.get("id")
-    deployment_url = result.get("url")
-    print(f"Deployment created: {deployment_id}")
-    if deployment_url:
-        print(f"Preview URL: {deployment_url}")
-    latest_stage = result.get("latest_stage", {})
-    if latest_stage:
-        print(f"Status: {latest_stage.get('status')} @ {latest_stage.get('ended_on') or latest_stage.get('started_on')}")
-    # Pass project name back to caller for domain + DNS wiring.
+    proc = subprocess.run(
+        cmd,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    if proc.returncode != 0:
+        raise CloudflareAPIError(
+            "Wrangler deploy failed "
+            f"(exit {proc.returncode}).\n\nSTDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}"
+        )
+
+    # Optional: show Wrangler output for debugging
+    print(proc.stdout.strip())
+
     return project_name
 
 
-def _get_zone_id(config: Config) -> str:
+# ---------------------------------------------------------------------------
+# DNS and custom domains
+# ---------------------------------------------------------------------------
+
+
+def _find_zone_id(config: Config) -> str:
     if config.root_domain in _ZONE_CACHE:
         return _ZONE_CACHE[config.root_domain]
 
-    params = {"name": config.root_domain, "status": "active"}
-    result = _request("GET", "/zones", config, params=params)
-    if not result:
-        raise CloudflareAPIError(
-            f"Cloudflare zone for {config.root_domain} not found. Ensure the domain is in your account."
-        )
-
-    zone_id = result[0].get("id")
-    if not zone_id:
-        raise CloudflareAPIError(f"Cloudflare zone id missing for {config.root_domain}")
-
+    zones = _request(
+        "GET",
+        "/zones",
+        config,
+        params={"name": config.root_domain},
+    )
+    if not zones:
+        raise CloudflareAPIError(f"No Cloudflare zone found for {config.root_domain}")
+    zone_id = zones[0]["id"]
     _ZONE_CACHE[config.root_domain] = zone_id
     return zone_id
 
 
-def _ensure_dns_record(fqdn: str, target: str, config: Config) -> None:
-    zone_id = _get_zone_id(config)
-    params = {"name": fqdn, "type": "CNAME"}
-    existing_records = _request("GET", f"/zones/{zone_id}/dns_records", config, params=params)
-    existing = existing_records[0] if existing_records else None
+def _ensure_dns_record(*, fqdn: str, target: str, config: Config) -> None:
+    """
+    Ensure fqdn is a CNAME pointing at target in the root zone.
+    """
+    zone_id = _find_zone_id(config)
+    base_path = f"/zones/{zone_id}/dns_records"
 
-    payload = {"type": "CNAME", "name": fqdn, "content": target, "proxied": True, "ttl": 1}
+    records = _request(
+        "GET",
+        base_path,
+        config,
+        params={"name": fqdn, "type": "CNAME"},
+    )
+
+    existing = records[0] if records else None
+
+    payload = {
+        "type": "CNAME",
+        "name": fqdn,
+        "content": target,
+        "proxied": True,
+    }
+
+    if existing and existing.get("content") == target:
+        print(f"DNS already points {fqdn} -> {target}")
+        return
 
     if existing:
-        if existing.get("content") == target and existing.get("type") == "CNAME":
-            print(f"DNS already points {fqdn} -> {target}")
-            return
-
-        record_id = existing.get("id")
-        _request("PUT", f"/zones/{zone_id}/dns_records/{record_id}", config, json=payload)
-        print(f"Updated DNS CNAME: {fqdn} -> {target}")
+        _request("PUT", f"{base_path}/{existing['id']}", config, json=payload)
+        print(f"Updated DNS record: {fqdn} -> {target}")
     else:
-        _request("POST", f"/zones/{zone_id}/dns_records", config, json=payload)
-        print(f"Created DNS CNAME: {fqdn} -> {target}")
+        _request("POST", base_path, config, json=payload)
+        print(f"Created DNS record: {fqdn} -> {target}")
 
 
-def ensure_custom_domain(slug: str, project_name: str, config: Config) -> str:
+def ensure_custom_domain(*, slug: str, project_name: str, config: Config) -> str:
+    """
+    Attach slug.root_domain as a custom domain to the given Pages project and
+    ensure the DNS CNAME is present.
+
+    Returns the fully qualified domain name.
+    """
     fqdn = f"{slug}.{config.root_domain}"
-    domains_path = f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/domains"
+    domains_path = (
+        f"/accounts/{config.cf_account_id}/pages/projects/{project_name}/domains"
+    )
 
-    domains = _request("GET", domains_path, config) or []
-    existing = next((d for d in domains if d.get("name") == fqdn), None)
+    domains = _request("GET", domains_path, config)
+    existing = None
+    for d in domains:
+        if d.get("name") == fqdn:
+            existing = d
+            break
 
     if existing:
-        print(f"Custom domain already configured: {fqdn} (status: {existing.get('status')})")
+        print(
+            f"Custom domain already configured: {fqdn} "
+            f"(status: {existing.get('status')})"
+        )
     else:
         existing = _request("POST", domains_path, config, json={"name": fqdn})
-        print(f"Added custom domain: {fqdn} (status: {existing.get('status')})")
+        print(
+            f"Added custom domain: {fqdn} "
+            f"(status: {existing.get('status')})"
+        )
 
     pages_hostname = f"{project_name}.pages.dev"
     _ensure_dns_record(fqdn=fqdn, target=pages_hostname, config=config)
 
     status = (existing or {}).get("status")
     if status and status != "active":
-        print(f"Domain verification pending (status: {status}). DNS and TLS may take a few minutes to finalize.")
+        print(
+            "Domain verification pending "
+            f"(status: {status}). DNS and TLS may take a few minutes to finalize."
+        )
 
     return fqdn
