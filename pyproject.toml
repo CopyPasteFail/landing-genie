@@ -5,9 +5,10 @@ description = "AI assisted landing page generator using Gemini CLI and Cloudflar
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "typer[all]",
-    "python-dotenv",
-    "requests"
+    "typer[all]==0.20.0",
+    "python-dotenv==1.2.1",
+    "requests==2.32.5",
+    "pytest==9.0.1"
 ]
 
 [project.scripts]

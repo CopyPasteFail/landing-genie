@@ -60,6 +60,24 @@ landing-genie new --prompt "Landing page for an AI habit tracking app" --suggest
 
 With `GEMINI_API_KEY` set, `landing-genie new` will also render images for any `assets/*.png` placeholders it finds. Skip with `--no-images` or regenerate later with `landing-genie images <slug>` (add `--overwrite` to replace existing files).
 
+### Tests (light, minimal tokens)
+
+```bash
+# Run all tests
+pytest
+
+# Run just the CLI smoke test (uses Gemini CLI with a tiny prompt)
+pytest -s tests/test_gemini_cli.py
+
+# Run just the image smoke test (uses GEMINI_API_KEY once)
+pytest tests/test_image_generation.py
+```
+
+Notes:
+- Tests load `.env` via `Config.load()`, so run from the repo root with your env set.
+- The CLI test respects `GEMINI_ALLOW_CLI_API_KEY`; by default it strips `GEMINI_API_KEY` from the CLI env.
+- The image test skips if `GEMINI_API_KEY` is unset; it writes the generated file under pytest’s temp dir (e.g., `/tmp/pytest-of-<user>/.../sites/image-smoke/assets/test.png`).
+
 ## Commands
 
 - `landing-genie init`  

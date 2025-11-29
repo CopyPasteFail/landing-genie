@@ -82,7 +82,7 @@ def new(
     while True:
         choice = typer.prompt("Happy with this landing? [y]es / [n]o / [f]eedback").lower()
         if choice in {"y", "yes"}:
-            typer.echo("Great. You can deploy with: landing-genie deploy {slug}")
+            typer.echo(f"Great. You can deploy with: landing-genie deploy {slug}")
             break
         if choice in {"n", "no"}:
             typer.echo("You can rerun `landing-genie new` with a different prompt.")

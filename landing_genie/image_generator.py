@@ -69,12 +69,16 @@ def _image_prompt(slot: ImageSlot, product_prompt: str) -> str:
 
 
 def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, Optional[dict]]:
+    # Use responseModalities for the Gemini 3 image models (responseMimeType is rejected with
+    # INVALID_ARGUMENT on those preview endpoints).
+    generation_config = {"responseModalities": ["IMAGE"]}
+
     resp = requests.post(
         _API_URL.format(model=model),
         params={"key": api_key},
         json={
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "image/png"},
+            "generationConfig": generation_config,
         },
         timeout=120,
     )
@@ -83,8 +87,11 @@ def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, Option
 
     data = resp.json()
     try:
-        part = data["candidates"][0]["content"]["parts"][0]["inline_data"]
-        image_b64 = part["data"]
+        part = data["candidates"][0]["content"]["parts"][0]
+        inline = part.get("inlineData") or part.get("inline_data")
+        if not inline:
+            raise KeyError("inlineData")
+        image_b64 = inline["data"]
     except (KeyError, IndexError) as exc:
         raise RuntimeError(f"Unexpected Gemini image response: {data}") from exc
 
