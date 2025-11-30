@@ -139,6 +139,11 @@ Notes:
 - `landing-genie list`  
   List generated landings under `sites/`.
 
+## TODO / roadmap
+
+- When generating a new site, gather follow-up questions from Gemini CLI to refine drafts (e.g., target audience, whether the product exists or is WIP, tone preferences).
+- In preview mode, let users click a text section to open a popup and submit free-text refinements (e.g., “make it longer,” “add slight humour”) applied to that section.
+
 ## Notes and tips
 
 - The generated sites live under `sites/<slug>` as static assets. You can edit them manually before deploy.
