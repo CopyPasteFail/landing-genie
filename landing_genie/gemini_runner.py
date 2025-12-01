@@ -244,18 +244,18 @@ def _run_gemini(
     output_format: str = "json",
     capture_output: bool = False,
     debug: bool = False,
-) -> Optional[str]:
+    ) -> Optional[str]:
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
     if debug_enabled:
         print("[Gemini CLI debug] Prompt to be sent:\n" + prompt_text + "\n--- end prompt ---")
     cmd = [
         config.gemini_cli_command,
         "--model", model,
-        "--prompt", prompt_text,
         "--yolo",
     ]
     if output_format:
         cmd.extend(["--output-format", output_format])
+    cmd.append(prompt_text)
     env = os.environ.copy()
     if config.gemini_api_key and not os.getenv("GEMINI_ALLOW_CLI_API_KEY"):
         # Avoid sending paid API keys to the CLI unless explicitly allowed.
