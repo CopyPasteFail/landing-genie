@@ -96,6 +96,8 @@ landing-genie deploy habitlab
 landing-genie new --prompt "Landing page for an AI habit tracking app" --suggested-subdomain "habitlab" --no-images
 ```
 
+During `landing-genie new`, Gemini proposes a few clarifying questions (audience, product stage, tone, CTA). Answer what matters and press Enter to skip others; your responses are threaded into the first draft.
+
 With `GEMINI_API_KEY` set, `landing-genie new` will also render images for any `assets/*.png` placeholders it finds. Skip with `--no-images` or regenerate later with `landing-genie images <slug>` (add `--overwrite` to replace existing files).
 
 ```bash
@@ -129,7 +131,7 @@ Notes:
   Bootstrap config, validate environment, and ensure `sites/` exists.
 
 - `landing-genie new`  
-  Generate a new landing using Gemini CLI, serve it locally for review, and allow iterative refinements.
+  Generate a new landing using Gemini CLI, gather quick clarifications, serve locally for review, and allow iterative refinements. If `--prompt` is omitted, the CLI will ask for the product description interactively. Pass `--no-images` to skip the post-generation image step. Add `--debug` to print the full prompt sent to Gemini CLI for this run.
 
 - `landing-genie deploy <slug>`  
   Deploy an existing landing under `sites/<slug>` to Cloudflare Pages, creating a dedicated Pages project named `lp-<slug>-<rootdomain>` (e.g., `lp-smart-forget-ailablife`) and attaching the custom subdomain on your root domain.
@@ -142,7 +144,6 @@ Notes:
 
 ## TODO / roadmap
 
-- When generating a new site, gather follow-up questions from Gemini CLI to refine drafts (e.g., target audience, whether the product exists or is WIP, tone preferences).
 - In preview mode, let users click a text section to open a popup and submit free-text refinements (e.g., “make it longer,” “add slight humour”) applied to that section.
 
 ## Notes and tips

@@ -110,14 +110,152 @@ def _extract_usage(stdout: str, model: str) -> tuple[Optional[int], Optional[int
     return prompt_tokens, completion_tokens, total_tokens
 
 
-def _run_gemini(prompt_text: str, model: str, config: Config, cwd: Optional[Path] = None) -> None:
+def _extract_candidate_texts(obj: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+
+    def _append_text(value: Any) -> None:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                texts.append(stripped)
+
+    candidates = obj.get("candidates")
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            _append_text(candidate.get("text"))
+
+            content = candidate.get("content")
+            if isinstance(content, dict):
+                parts = content.get("parts")
+                if isinstance(parts, list):
+                    for part in parts:
+                        if isinstance(part, dict):
+                            _append_text(part.get("text"))
+            _append_text(candidate.get("output_text"))
+
+    _append_text(obj.get("text"))
+    return texts
+
+
+def _parse_questions_from_text(text: str) -> list[str]:
+    questions: list[str] = []
+
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        raw = parsed.get("questions")
+        if isinstance(raw, list):
+            for q in raw:
+                if isinstance(q, str):
+                    q_clean = q.strip()
+                    if q_clean:
+                        questions.append(q_clean)
+        if questions:
+            return questions
+
+    for line in text.splitlines():
+        cleaned = line.strip().lstrip("-•0123456789.) ")
+        if cleaned.endswith("?") and len(cleaned) > 6:
+            questions.append(cleaned)
+    return questions
+
+
+def suggest_follow_up_questions(
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    max_questions: int = 4,
+    debug: bool = False,
+) -> list[str]:
+    """Ask Gemini CLI to propose clarifying questions for the landing prompt."""
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "follow_up_questions_prompt.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Follow-up prompt template not found at {template_path}")
+
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = template.replace("{{ product_prompt }}", product_prompt)
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    found_questions: list[str] = []
+    for obj in _iter_json_objects(stdout):
+        if not isinstance(obj, dict):
+            continue
+        direct = obj.get("questions")
+        if isinstance(direct, list):
+            for q in direct:
+                if isinstance(q, str):
+                    q_clean = q.strip()
+                    if q_clean:
+                        found_questions.append(q_clean)
+
+        for text in _extract_candidate_texts(obj):
+            found_questions.extend(_parse_questions_from_text(text))
+
+    if not found_questions:
+        found_questions.extend(_parse_questions_from_text(stdout))
+
+    def _keep(question: str) -> Optional[str]:
+        cleaned = question.strip()
+        if not cleaned:
+            return None
+        if cleaned.replace(".", "").strip() == "":
+            return None
+        if cleaned in {"...", ".."}:
+            return None
+        if len(cleaned) < 6:
+            return None
+        return cleaned
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for q in found_questions:
+        cleaned = _keep(q)
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        deduped.append(cleaned)
+        seen.add(key)
+
+    return deduped[:max_questions]
+
+
+def _run_gemini(
+    prompt_text: str,
+    model: str,
+    config: Config,
+    cwd: Optional[Path] = None,
+    *,
+    output_format: str = "json",
+    capture_output: bool = False,
+    debug: bool = False,
+) -> Optional[str]:
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+    if debug_enabled:
+        print("[Gemini CLI debug] Prompt to be sent:\n" + prompt_text + "\n--- end prompt ---")
     cmd = [
         config.gemini_cli_command,
         "--model", model,
         "--prompt", prompt_text,
         "--yolo",
-        "--output-format", "json",
     ]
+    if output_format:
+        cmd.extend(["--output-format", output_format])
     env = os.environ.copy()
     if config.gemini_api_key and not os.getenv("GEMINI_ALLOW_CLI_API_KEY"):
         # Avoid sending paid API keys to the CLI unless explicitly allowed.
@@ -147,8 +285,18 @@ def _run_gemini(prompt_text: str, model: str, config: Config, cwd: Optional[Path
             f"prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
         )
 
+    return result.stdout if capture_output else None
 
-def generate_site(slug: str, product_prompt: str, project_root: Path, config: Config) -> None:
+
+def generate_site(
+    slug: str,
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    follow_up_context: Optional[str] = None,
+    debug: bool = False,
+) -> None:
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "runtime_generation_prompt.md"
     if not template_path.exists():
@@ -158,18 +306,20 @@ def generate_site(slug: str, product_prompt: str, project_root: Path, config: Co
     site_dir.mkdir(parents=True, exist_ok=True)
 
     template = template_path.read_text(encoding="utf-8")
+    clarifications = follow_up_context or "None provided."
     text = (
         template
         .replace("{{ slug }}", slug)
         .replace("{{ root_domain }}", config.root_domain)
         .replace("{{ product_prompt }}", product_prompt)
         .replace("{{ product_type }}", "hybrid")
+        .replace("{{ follow_up_context }}", clarifications)
     )
 
-    _run_gemini(text, config.gemini_code_model, config, cwd=site_dir)
+    _run_gemini(text, config.gemini_code_model, config, cwd=site_dir, debug=debug)
 
 
-def refine_site(slug: str, feedback: str, project_root: Path, config: Config) -> None:
+def refine_site(slug: str, feedback: str, project_root: Path, config: Config, *, debug: bool = False) -> None:
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "refine_landing_prompt.md"
     if not template_path.exists():
@@ -186,4 +336,4 @@ def refine_site(slug: str, feedback: str, project_root: Path, config: Config) ->
         .replace("{{ feedback }}", feedback)
     )
 
-    _run_gemini(text, config.gemini_code_model, config, cwd=site_dir)
+    _run_gemini(text, config.gemini_code_model, config, cwd=site_dir, debug=debug)
