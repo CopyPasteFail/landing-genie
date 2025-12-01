@@ -9,6 +9,7 @@
     "enabled": true,
     "logPrompts": false,
     "target": "local",
+    "outfile": ".gemini/telemetry.log",
     "otlpEndpoint": ""
   },
   "$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json",
