@@ -178,10 +178,21 @@ def generate_images_for_site(
             prompt_tokens = usage.get("promptTokenCount")
             completion_tokens = usage.get("candidatesTokenCount")
             total_tokens = usage.get("totalTokenCount")
-            print(
+
+            message = (
                 f"[Gemini Images] Tokens used (model={config.gemini_image_model}): "
                 f"prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
             )
+
+            total = total_tokens
+            if total is None and (prompt_tokens is not None or completion_tokens is not None):
+                total = (prompt_tokens or 0) + (completion_tokens or 0)
+
+            if config.gemini_image_cost_per_1k_tokens is not None and total is not None:
+                estimated_cost = (total / 1000.0) * config.gemini_image_cost_per_1k_tokens
+                message += f", estimated_cost={estimated_cost:.6f} USD"
+
+            print(message)
         generated.append(target_path)
 
     return generated

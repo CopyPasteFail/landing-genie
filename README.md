@@ -45,6 +45,7 @@ Edit `.env`:
 - `CLOUDFLARE_ACCOUNT_ID=...`
 - `CLOUDFLARE_API_TOKEN=...` (token with Pages+DNS edit)
 - `GEMINI_CODE_MODEL=...` / `GEMINI_IMAGE_MODEL=...` (optional overrides)
+- `GEMINI_IMAGE_COST_PER_1K_TOKENS=` (optional; USD price per 1,000 tokens for your chosen Gemini image model, see https://ai.google.dev/gemini-api/docs/pricing)
 - `GEMINI_CLI_COMMAND=gemini` (default: `gemini`; change if your CLI is named differently)
 - `GEMINI_ALLOW_CLI_API_KEY=0` (default: `0`; set to `1` only if you want the CLI to consume `GEMINI_API_KEY`)
 - `GEMINI_API_KEY=` (enable image generation via Python; not passed to the CLI unless `GEMINI_ALLOW_CLI_API_KEY=1`)
@@ -114,7 +115,7 @@ pytest -s tests/test_gemini_cli.py
 pytest tests/test_cloudflare_api.py
 
 # Run just the image smoke test (uses GEMINI_API_KEY once)
-pytest tests/test_image_generation.py
+pytest -s tests/test_image_generation.py
 ```
 
 Notes:
@@ -276,3 +277,67 @@ Using Wrangler:
 - Cloudflare handles all the complexity of asset uploading.
 
 This is why the project moved from raw API calls to a Wrangler-based deployment flow.
+
+## Image Pricing Breakdown (Gemini Pro vs Flash)
+
+> For up to date information see https://ai.google.dev/gemini-api/docs/pricing.
+
+Google charges for images based on **output tokens**, not per-image.  
+The formula is always:
+
+Cost = (Output tokens / 1,000,000) × Model Price
+
+Average token usage per image:
+- 1K image (1024×1024): ~1,100–1,300 tokens
+- 2K image (2048×2048): ~2,000–2,500 tokens
+- 4K image (4096×4096): ~3,500–4,000 tokens
+
+Model prices per 1M output tokens:
+- **Gemini 3 Pro Image Preview**: $120 per 1M tokens
+- **Gemini Flash Image Preview**: $40 per 1M tokens
+
+Effective cost per image:
+- **Gemini 3 Pro**
+  - 1K/2K image ≈ $0.13–$0.14
+  - 4K image ≈ $0.24–$0.48
+- **Gemini Flash**
+  - 1K/2K image ≈ $0.05
+  - 4K image ≈ $0.12–$0.16
+
+Flash is roughly **3 times cheaper** than Pro.
+
+**Example for one 1K image with Pro:**
+Tokens ≈ 1,200  
+Cost = (1,200 / 1,000,000) × 120 = $0.144
+
+**Example for one 1K image with Flash:**
+Tokens ≈ 1,200  
+Cost = (1,200 / 1,000,000) × 40 = $0.048
+
+
+## Image Resolution and Control (1K, 2K, 4K)
+
+What 1K / 2K / 4K means:
+- **1K** → roughly 1024×1024 pixels
+- **2K** → roughly 2048×2048 pixels
+- **4K** → roughly 4096×4096 pixels
+
+Higher resolution → more output tokens → higher cost.
+
+Current Gemini image models **do not allow exact resolution control** like `width` and `height` parameters.  
+You cannot explicitly set 1024×1024 or 2048×2048 via API.
+
+You *can influence* resolution using prompt instructions:
+- “Generate a square 4K image”
+- “High-resolution portrait”
+- “16:9 widescreen landscape”
+- “Ultra-high-quality 2048 wide render”
+
+But the model chooses the final size internally.
+
+Only older legacy models allowed explicit resolution fields. New Gemini image models use semantic sizing:
+- Ask for “4K” → returns a higher-res image  
+- Ask for “square” → returns a square  
+- Ask for “portrait” → returns vertical aspect  
+
+For strict resolution control, you must resize after generation.
