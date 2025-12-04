@@ -19,6 +19,7 @@ def _config() -> Config:
         gemini_cli_command="gemini",
         gemini_api_key="api-key",
         gemini_telemetry_otlp_endpoint=None,
+        gemini_image_cost_per_1k_tokens=None,
     )
 
 

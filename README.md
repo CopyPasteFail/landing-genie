@@ -15,6 +15,22 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 - Billing-enabled `GEMINI_API_KEY` **only** for image generation (Python client). This key is not passed to the CLI by default so text requests stay on the non-billed flow.
 - Optional: a preferred Gemini code and image model name (see `.env.example` defaults)
 
+### Gemini CLI free tier (text prompts)
+
+- Logging in with `gemini login` keeps text prompts on the Google AI Studio free tier. Rate limits on the free tier apply (see https://ai.google.dev/gemini-api/docs/rate-limits under those models).
+- Leave `GEMINI_ALLOW_CLI_API_KEY=0` or unset to avoid accidentally switching the CLI onto your paid API key; use the API key only for image calls where billing is required.
+
+### Gemini free-tier rate limits (API)
+
+- Rate limits are enforced per project (not per API key) and are checked independently across RPM (requests per minute), TPM (input tokens per minute), and RPD (requests per day). Exceeding any dimension triggers a rate limit error; RPD resets at midnight Pacific.
+- Limits vary by model and some limits are model-specific. Common text-out free-tier limits:
+
+| Model | RPM | TPM (input) | RPD |
+| --- | --- | --- | --- |
+| Gemini 2.5 Pro | 2 | 125,000 | 50 |
+| Gemini 2.5 Flash | 10 | 250,000 | 250 |
+| Gemini 2.5 Flash-Lite | 15 | 250,000 | 1,000 |
+
 ### Gemini image generation requires billing
 
 - Google’s free Gemini tier only covers text models (plus very limited embeddings). Image models such as `gemini-2.5-flash-image`, `gemini-2.0-flash-image`, and earlier `preview-image` variants have **0** free daily/minute requests and **0** free input tokens.
@@ -94,9 +110,12 @@ landing-genie new --prompt "Landing page for an AI habit tracking app" --suggest
 landing-genie deploy habitlab
 # Skip image generation for a run:
 landing-genie new --prompt "Landing page for an AI habit tracking app" --suggested-subdomain "habitlab" --no-images
+# Skip clarifying questions:
+landing-genie new --prompt "Landing page for an AI habit tracking app" --suggested-subdomain "habitlab" --no-follow-ups
 ```
 
 During `landing-genie new`, Gemini proposes a few clarifying questions (audience, product stage, tone, CTA). Answer what matters and press Enter to skip others; your responses are threaded into the first draft.
+Pass `--no-follow-ups` if you want to skip asking Gemini for clarifications entirely.
 
 With `GEMINI_API_KEY` set, `landing-genie new` will also render images for any `assets/*.png` placeholders it finds. Skip with `--no-images` or regenerate later with `landing-genie images <slug>` (add `--overwrite` to replace existing files).
 
@@ -132,6 +151,7 @@ Notes:
 
 - `landing-genie new`  
   Generate a new landing using Gemini CLI, gather quick clarifications, serve locally for review, and allow iterative refinements. If `--prompt` is omitted, the CLI will ask for the product description interactively. Pass `--no-images` to skip the post-generation image step. Add `--debug` to print the full prompt sent to Gemini CLI for this run.
+  - Add `--no-follow-ups` to skip asking Gemini for clarifying questions (handy for quick iterations or scripted runs).
 
 - `landing-genie deploy <slug>`  
   Deploy an existing landing under `sites/<slug>` to Cloudflare Pages, creating a dedicated Pages project named `lp-<slug>-<rootdomain>` (e.g., `lp-smart-forget-ailablife`) and attaching the custom subdomain on your root domain.

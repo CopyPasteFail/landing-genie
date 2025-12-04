@@ -9,7 +9,7 @@ import typer
 
 from .config import Config
 from .gemini_runner import generate_site, refine_site, suggest_follow_up_questions
-from .image_generator import generate_images_for_site
+from .image_generator import ensure_placeholder_assets, generate_images_for_site
 from .preview import serve_local
 from .cloudflare_api import deploy_to_pages, ensure_custom_domain
 
@@ -40,6 +40,7 @@ def new(
     open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser"),
     generate_images: bool = typer.Option(True, "--images/--no-images", help="Generate images with GEMINI_API_KEY after creating the site"),
     overwrite_images: bool = typer.Option(False, "--overwrite-images", help="Regenerate images even if files already exist"),
+    ask_follow_ups: bool = typer.Option(True, "--follow-ups/--no-follow-ups", help="Ask Gemini for clarifying questions before generation"),
     debug: bool = typer.Option(False, "--debug", help="Print prompts sent to Gemini CLI"),
 ) -> None:
     """Generate a new landing page with Gemini CLI."""
@@ -58,11 +59,12 @@ def new(
 
     typer.echo(f"Using slug: {slug}")
     follow_up_context: Optional[str] = None
-    try:
-        questions = suggest_follow_up_questions(product_prompt=prompt, project_root=root, config=config, debug=debug)
-    except Exception as exc:
-        typer.echo(f"Could not fetch follow-up questions from Gemini; continuing without them. ({exc})")
-        questions = []
+    questions: list[str] = []
+    if ask_follow_ups:
+        try:
+            questions = suggest_follow_up_questions(product_prompt=prompt, project_root=root, config=config, debug=debug)
+        except Exception as exc:
+            typer.echo(f"Could not fetch follow-up questions from Gemini; continuing without them. ({exc})")
 
     if questions:
         typer.echo("Gemini suggests a few clarifications. Press Enter to skip any question.")
@@ -70,7 +72,7 @@ def new(
         for idx, question in enumerate(questions, start=1):
             q_text = question.strip() or f"Question {idx}"
             typer.echo(f"Q{idx}: {q_text}")
-            response = typer.prompt("Answer", default="").strip()
+            response = typer.prompt("Answer", default="", show_default=False).strip()
             if response:
                 answers.append((q_text, response))
         if answers:
@@ -82,8 +84,12 @@ def new(
         project_root=root,
         config=config,
         follow_up_context=follow_up_context,
+        include_follow_up_context=ask_follow_ups,
         debug=debug,
     )
+
+    placeholder_created: list[Path] = []
+    generated_images: list[Path] = []
 
     if generate_images:
         api_key_present = config.gemini_api_key or os.getenv("GEMINI_API_KEY")
@@ -91,23 +97,29 @@ def new(
             typer.echo("GEMINI_API_KEY not set; skipping image generation.")
         else:
             try:
-                created = generate_images_for_site(
+                generated_images = generate_images_for_site(
                     slug=slug,
                     product_prompt=prompt,
                     project_root=root,
                     config=config,
                     overwrite=overwrite_images,
                 )
-                if created:
+                if generated_images:
                     typer.echo("Generated images:")
-                    for path in created:
+                    for path in generated_images:
                         typer.echo(f"- {path}")
                 else:
                     typer.echo("No image placeholders found or images already existed; skipping generation.")
             except Exception as exc:
                 typer.echo(f"Image generation skipped: {exc}")
+    # Always ensure placeholders for any remaining referenced assets.
+    placeholder_created = ensure_placeholder_assets(slug=slug, project_root=root)
+    if placeholder_created:
+        typer.echo("Placeholder assets added:")
+        for path in placeholder_created:
+            typer.echo(f"- {path}")
 
-    url = serve_local(slug=slug, project_root=root)
+    url = serve_local(slug=slug, project_root=root, debug=debug)
     typer.echo(f"Preview URL: {url}")
     if open_browser:
         webbrowser.open(url)
@@ -121,11 +133,16 @@ def new(
             typer.echo("You can rerun `landing-genie new` with a different prompt.")
             break
         if choice in {"f", "feedback"}:
-            feedback = typer.prompt("Enter feedback for Gemini (short, focused):")
+            feedback = typer.prompt("Enter feedback for Gemini (short, focused)")
             typer.echo("Stage 1/2: sending feedback to Gemini and regenerating the site...")
             refine_site(slug=slug, feedback=feedback, project_root=root, config=config, debug=debug)
             typer.echo("Stage 2/2: refreshing the local preview server...")
-            url = serve_local(slug=slug, project_root=root)
+            placeholder_created = ensure_placeholder_assets(slug=slug, project_root=root)
+            if placeholder_created:
+                typer.echo("Placeholder assets added:")
+                for path in placeholder_created:
+                    typer.echo(f"- {path}")
+            url = serve_local(slug=slug, project_root=root, debug=debug)
             typer.echo(f"Updated preview at: {url}")
             if open_browser:
                 webbrowser.open(url)

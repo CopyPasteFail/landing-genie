@@ -3,6 +3,8 @@ import json
 import os
 import re
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Any, Iterator, Optional, cast
 
@@ -139,6 +141,28 @@ def _extract_candidate_texts(obj: dict[str, Any]) -> list[str]:
     return texts
 
 
+def _strip_code_fences(text: str) -> str:
+    """
+    Remove surrounding Markdown fences such as ```json ... ``` or ``` ... ```.
+    """
+    match = re.match(r"\s*```(?:json)?\s*(.*?)\s*```\s*$", text, flags=re.DOTALL | re.IGNORECASE)
+    return match.group(1) if match else text.strip()
+
+
+def _extract_questions_from_obj(obj: Any) -> list[str]:
+    questions: list[str] = []
+    if not isinstance(obj, dict):
+        return questions
+    raw = obj.get("questions")
+    if isinstance(raw, list):
+        for q in raw:
+            if isinstance(q, str):
+                q_clean = q.strip()
+                if q_clean:
+                    questions.append(q_clean)
+    return questions
+
+
 def _parse_questions_from_text(text: str) -> list[str]:
     questions: list[str] = []
 
@@ -165,6 +189,113 @@ def _parse_questions_from_text(text: str) -> list[str]:
     return questions
 
 
+def _parse_follow_up_questions(stdout: str, *, debug: bool = False) -> list[str]:
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+
+    def _debug(msg: str) -> None:
+        if debug_enabled:
+            print(msg)
+
+    truncated_stdout = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
+    _debug(f"[Gemini CLI debug] Raw follow-up stdout ({len(stdout)} chars):\n{truncated_stdout}")
+
+    try:
+        outer = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        _debug("[Gemini CLI debug] Failed to parse follow-up stdout as JSON; see raw stdout above.")
+        raise ValueError("Gemini follow-up questions response was not valid JSON") from exc
+
+    if not isinstance(outer, dict):
+        _debug(f"[Gemini CLI debug] Follow-up stdout JSON was not an object: {type(outer).__name__}")
+        raise ValueError("Gemini follow-up questions response must be a JSON object")
+
+    direct_questions = _extract_questions_from_obj(outer)
+    if direct_questions:
+        return direct_questions
+
+    response_field = outer.get("response")
+    response_text = response_field if isinstance(response_field, str) else None
+    if response_text is None:
+        _debug("[Gemini CLI debug] Follow-up response missing or not a string; falling back to text parsing.")
+        return _parse_questions_from_text(stdout)
+
+    stripped = _strip_code_fences(response_text)
+    if stripped != response_text:
+        _debug("[Gemini CLI debug] Stripped Markdown code fences from follow-up response.")
+
+    truncated_response = stripped if len(stripped) <= 4000 else stripped[:4000] + "...[truncated]"
+
+    try:
+        inner = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        _debug(
+            "[Gemini CLI debug] Follow-up response was not valid JSON; "
+            f"raw response:\n{truncated_response}"
+        )
+        return _parse_questions_from_text(stripped)
+
+    inner_questions = _extract_questions_from_obj(inner)
+    if inner_questions:
+        return inner_questions
+
+    _debug("[Gemini CLI debug] No questions array found after parsing response JSON; using text fallback.")
+    return _parse_questions_from_text(stripped)
+
+
+def _dedupe_questions(questions: list[str], max_questions: int) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+
+    def _keep(question: str) -> Optional[str]:
+        cleaned = question.strip()
+        if not cleaned:
+            return None
+        if cleaned.replace(".", "").strip() == "":
+            return None
+        if cleaned in {"...", ".."}:
+            return None
+        if len(cleaned) < 6:
+            return None
+        return cleaned
+
+    for q in questions:
+        cleaned = _keep(q)
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        deduped.append(cleaned)
+        seen.add(key)
+        if len(deduped) >= max_questions:
+            break
+
+    return deduped
+
+
+def _load_prompt_snippets(project_root: Path) -> dict[str, str]:
+    """
+    Load optional prompt snippets from prompts/snippets.md, split by `## name` headers.
+    """
+    snippets_path = project_root / "prompts" / "snippets.md"
+    if not snippets_path.exists():
+        return {}
+    content = snippets_path.read_text(encoding="utf-8")
+    pattern = re.compile(r"^##\s+([A-Za-z0-9_\-]+)\s*$", flags=re.MULTILINE)
+    matches = list(pattern.finditer(content))
+    if not matches:
+        return {}
+
+    snippets: dict[str, str] = {}
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
+        raw_block = content[start:end].lstrip("\n")
+        # Preserve trailing newline to keep blocks separated when inserted.
+        snippets[match.group(1)] = raw_block.rstrip() + "\n"
+    return snippets
+
+
 def suggest_follow_up_questions(
     product_prompt: str,
     project_root: Path,
@@ -173,6 +304,7 @@ def suggest_follow_up_questions(
     debug: bool = False,
 ) -> list[str]:
     """Ask Gemini CLI to propose clarifying questions for the landing prompt."""
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "follow_up_questions_prompt.md"
     if not template_path.exists():
@@ -190,49 +322,16 @@ def suggest_follow_up_questions(
         debug=debug,
     ) or ""
 
-    found_questions: list[str] = []
-    for obj in _iter_json_objects(stdout):
-        if not isinstance(obj, dict):
-            continue
-        direct = obj.get("questions")
-        if isinstance(direct, list):
-            for q in direct:
-                if isinstance(q, str):
-                    q_clean = q.strip()
-                    if q_clean:
-                        found_questions.append(q_clean)
+    parsed_questions = _parse_follow_up_questions(stdout, debug=debug)
+    deduped = _dedupe_questions(parsed_questions, max_questions)
 
-        for text in _extract_candidate_texts(obj):
-            found_questions.extend(_parse_questions_from_text(text))
+    if debug_enabled:
+        if deduped:
+            print(f"[Gemini CLI debug] Extracted follow-up questions: {deduped}")
+        else:
+            print("[Gemini CLI debug] No follow-up questions extracted; continuing without them.")
 
-    if not found_questions:
-        found_questions.extend(_parse_questions_from_text(stdout))
-
-    def _keep(question: str) -> Optional[str]:
-        cleaned = question.strip()
-        if not cleaned:
-            return None
-        if cleaned.replace(".", "").strip() == "":
-            return None
-        if cleaned in {"...", ".."}:
-            return None
-        if len(cleaned) < 6:
-            return None
-        return cleaned
-
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for q in found_questions:
-        cleaned = _keep(q)
-        if not cleaned:
-            continue
-        key = cleaned.lower()
-        if key in seen:
-            continue
-        deduped.append(cleaned)
-        seen.add(key)
-
-    return deduped[:max_questions]
+    return deduped
 
 
 def _run_gemini(
@@ -244,7 +343,7 @@ def _run_gemini(
     output_format: str = "json",
     capture_output: bool = False,
     debug: bool = False,
-    ) -> Optional[str]:
+) -> Optional[str]:
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
     if debug_enabled:
         print("[Gemini CLI debug] Prompt to be sent:\n" + prompt_text + "\n--- end prompt ---")
@@ -257,19 +356,61 @@ def _run_gemini(
         cmd.extend(["--output-format", output_format])
     cmd.append(prompt_text)
     env = os.environ.copy()
-    if config.gemini_api_key and not os.getenv("GEMINI_ALLOW_CLI_API_KEY"):
-        # Avoid sending paid API keys to the CLI unless explicitly allowed.
+    # Respect README guidance: keep CLI text calls on the CLI's own auth unless explicitly allowed.
+    allow_cli_api_key = os.getenv("GEMINI_ALLOW_CLI_API_KEY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if config.gemini_api_key and allow_cli_api_key:
+        env["GEMINI_API_KEY"] = config.gemini_api_key
+    else:
         env.pop("GEMINI_API_KEY", None)
     if config.gemini_telemetry_otlp_endpoint:
         # Override the CLI's telemetry endpoint when running headless so OTLP export is enabled.
         env["GEMINI_TELEMETRY_OTLP_ENDPOINT"] = config.gemini_telemetry_otlp_endpoint
-    result = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd is not None else None,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+    start_time = time.monotonic()
+    stop_event = threading.Event()
+    last_msg_len = 0
+
+    def _print_status(status: str, elapsed: float) -> None:
+        nonlocal last_msg_len
+        line = f"[Gemini CLI] {status} {elapsed:.1f} s"
+        padding = max(0, last_msg_len - len(line))
+        print(f"\r{line}{' ' * padding}", end="", flush=True)
+        last_msg_len = len(line)
+
+    def _tick() -> None:
+        while not stop_event.wait(0.2):
+            _print_status("Running...", time.monotonic() - start_time)
+
+    _print_status("Running...", 0.0)
+    progress_thread = threading.Thread(target=_tick, daemon=True)
+    progress_thread.start()
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd is not None else None,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        elapsed = time.monotonic() - start_time
+    except Exception:
+        elapsed = time.monotonic() - start_time
+        stop_event.set()
+        progress_thread.join(timeout=0.5)
+        _print_status("Failed after", elapsed)
+        print()
+        raise
+
+    stop_event.set()
+    progress_thread.join(timeout=0.5)
+    _print_status("Completed in", elapsed)
+    print()
+
     if result.returncode != 0:
         raise RuntimeError(
             f"Gemini CLI failed. Command: {' '.join(cmd)}\n"
@@ -295,6 +436,7 @@ def generate_site(
     config: Config,
     *,
     follow_up_context: Optional[str] = None,
+    include_follow_up_context: bool = True,
     debug: bool = False,
 ) -> None:
     prompts_dir = project_root / "prompts"
@@ -306,7 +448,20 @@ def generate_site(
     site_dir.mkdir(parents=True, exist_ok=True)
 
     template = template_path.read_text(encoding="utf-8")
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
     clarifications = follow_up_context or "None provided."
+    snippets = _load_prompt_snippets(project_root)
+    snippet_template = snippets.get("follow_up_block")
+    default_follow_up_block = "- Follow-up clarifications:\n{{ follow_up_context }}\n\n"
+    follow_up_block = ""
+    if include_follow_up_context:
+        block_template = snippet_template or default_follow_up_block
+        follow_up_block = block_template.replace("{{ follow_up_context }}", clarifications)
+    if debug_enabled:
+        if follow_up_context:
+            print(f"[Gemini CLI debug] Using follow-up clarifications:\n{follow_up_context}")
+        else:
+            print("[Gemini CLI debug] No follow-up clarifications provided; using 'None provided.'")
     text = (
         template
         .replace("{{ slug }}", slug)
@@ -314,6 +469,7 @@ def generate_site(
         .replace("{{ product_prompt }}", product_prompt)
         .replace("{{ product_type }}", "hybrid")
         .replace("{{ follow_up_context }}", clarifications)
+        .replace("{{ follow_up_block }}", follow_up_block)
     )
 
     _run_gemini(text, config.gemini_code_model, config, cwd=site_dir, debug=debug)

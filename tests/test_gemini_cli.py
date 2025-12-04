@@ -29,7 +29,13 @@ def test_gemini_cli_smoke() -> None:
     ]
     env = os.environ.copy()
     # Respect the CLI/API key separation just like production code.
-    if config.gemini_api_key and not os.getenv("GEMINI_ALLOW_CLI_API_KEY"):
+    allow_cli_api_key = os.getenv("GEMINI_ALLOW_CLI_API_KEY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if config.gemini_api_key and not allow_cli_api_key:
         env.pop("GEMINI_API_KEY", None)
 
     result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=45)
