@@ -52,7 +52,7 @@ def test_follow_up_questions_feed_generation_prompt(tmp_path, monkeypatch) -> No
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "follow_up_questions_prompt.md").write_text(
-        "Follow-ups for {{ product_prompt }}", encoding="utf-8"
+        "Follow-ups for {{ product_prompt }} (limit {{ max_follow_up_questions }})", encoding="utf-8"
     )
     (prompts_dir / "runtime_generation_prompt.md").write_text(
         "{{ follow_up_block }}", encoding="utf-8"
@@ -65,7 +65,10 @@ def test_follow_up_questions_feed_generation_prompt(tmp_path, monkeypatch) -> No
 {
   "questions": [
     "Who is the primary target audience for this tool?",
-    "What is the primary call to action for the landing page?"
+    "What is the primary call to action for the landing page?",
+    "What proof or traction can we cite (users, results, partners)?",
+    "What tone or brand cues should the page follow?",
+    "Which sections matter most (hero, features, pricing, FAQ, contact)?"
   ]
 }
 ```"""
@@ -109,7 +112,11 @@ def test_follow_up_questions_feed_generation_prompt(tmp_path, monkeypatch) -> No
     assert questions == [
         "Who is the primary target audience for this tool?",
         "What is the primary call to action for the landing page?",
+        "What proof or traction can we cite (users, results, partners)?",
+        "What tone or brand cues should the page follow?",
+        "Which sections matter most (hero, features, pricing, FAQ, contact)?",
     ]
+    assert f"limit {gemini_runner.MAX_FOLLOW_UP_QUESTIONS}" in call_log[0]["prompt"]
 
     follow_up_context = "\n".join(f"- {q} Answer: provided" for q in questions)
 

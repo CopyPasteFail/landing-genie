@@ -11,6 +11,9 @@ from typing import Any, Iterator, Optional, cast
 from .config import Config
 
 
+MAX_FOLLOW_UP_QUESTIONS = 20  # Centralized cap for how many clarifying questions Gemini can return.
+
+
 def _iter_json_objects(text: str) -> Iterator[dict[str, Any]]:
     """Yield JSON objects from a stream that may contain multiple blobs and noise."""
     decoder = json.JSONDecoder()
@@ -300,7 +303,7 @@ def suggest_follow_up_questions(
     product_prompt: str,
     project_root: Path,
     config: Config,
-    max_questions: int = 4,
+    max_questions: int = MAX_FOLLOW_UP_QUESTIONS,
     debug: bool = False,
 ) -> list[str]:
     """Ask Gemini CLI to propose clarifying questions for the landing prompt."""
@@ -311,7 +314,11 @@ def suggest_follow_up_questions(
         raise FileNotFoundError(f"Follow-up prompt template not found at {template_path}")
 
     template = template_path.read_text(encoding="utf-8")
-    prompt_text = template.replace("{{ product_prompt }}", product_prompt)
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ max_follow_up_questions }}", str(MAX_FOLLOW_UP_QUESTIONS))
+    )
 
     stdout = _run_gemini(
         prompt_text,

@@ -67,11 +67,13 @@ def new(
             typer.echo(f"Could not fetch follow-up questions from Gemini; continuing without them. ({exc})")
 
     if questions:
-        typer.echo("Gemini suggests a few clarifications. Press Enter to skip any question.")
+        total = len(questions)
+        label = "clarification" if total == 1 else "clarifications"
+        typer.echo(f"Gemini suggests {total} {label}. Press Enter to skip any question.")
         answers: list[tuple[str, str]] = []
         for idx, question in enumerate(questions, start=1):
             q_text = question.strip() or f"Question {idx}"
-            typer.echo(f"Q{idx}: {q_text}")
+            typer.echo(f"Q{idx} (out of {total}): {q_text}")
             response = typer.prompt("Answer", default="", show_default=False).strip()
             if response:
                 answers.append((q_text, response))
