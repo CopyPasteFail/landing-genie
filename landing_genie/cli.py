@@ -119,7 +119,7 @@ def new(
         for path in placeholder_created:
             typer.echo(f"- {path}")
 
-    url = serve_local(slug=slug, project_root=root, debug=debug)
+    url = serve_local(slug=slug, project_root=root, config=config, debug=debug)
     typer.echo(f"Preview URL: {url}")
     if open_browser:
         webbrowser.open(url)
@@ -142,7 +142,7 @@ def new(
                 typer.echo("Placeholder assets added:")
                 for path in placeholder_created:
                     typer.echo(f"- {path}")
-            url = serve_local(slug=slug, project_root=root, debug=debug)
+            url = serve_local(slug=slug, project_root=root, config=config, debug=debug)
             typer.echo(f"Updated preview at: {url}")
             if open_browser:
                 webbrowser.open(url)

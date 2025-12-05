@@ -35,7 +35,7 @@ def test_new_skips_followups_when_flag_disabled(monkeypatch, tmp_path) -> None:
         generated.append(kwargs)
 
     monkeypatch.setattr(cli, "generate_site", _fake_generate_site)
-    monkeypatch.setattr(cli, "serve_local", lambda slug, project_root, debug=False: f"http://localhost/{slug}")
+    monkeypatch.setattr(cli, "serve_local", lambda slug, project_root, config=None, debug=False: f"http://localhost/{slug}")
 
     result = runner.invoke(
         cli.app,

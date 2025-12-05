@@ -163,9 +163,11 @@ Notes:
 - `landing-genie list`  
   List generated landings under `sites/`.
 
-## TODO / roadmap
+## Preview refinements
 
-- In preview mode, let users click a text section to open a popup and submit free-text refinements (e.g., “make it longer,” “add slight humour”) applied to that section.
+- When the local preview opens, hover or click any text-heavy section to launch the **Refine section** popup.
+- Describe the tweak you want (e.g., “make it longer,” “add slight humour,” “focus on compliance leaders”) and landing-genie will regenerate that section with Gemini.
+- The preview reloads automatically after the refinement finishes. The editing overlay appears only in local preview, never in deployed builds.
 
 ## Notes and tips
 
