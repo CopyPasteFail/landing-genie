@@ -3,7 +3,7 @@
 AI-assisted landing page generator that uses Gemini CLI to create static marketing pages
 and deploy them to Cloudflare Pages under subdomains of a domain you own.
 
-## Requirements (answering the “what do I need?” list)
+## Requirements
 
 - Python `>=3.11` and `pip`
 - Git (for cloning) and a POSIX shell (examples assume bash/zsh; PowerShell works with equivalent commands)
@@ -11,6 +11,7 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 - Cloudflare account with:
   - Account ID (`CLOUDFLARE_ACCOUNT_ID`)
   - API token with **Pages:Edit** and **DNS:Edit** permissions for that account (`CLOUDFLARE_API_TOKEN`)
+- Cloudflare wrangler CLI installed globally via npm (used for deploying to Pages)
 - Gemini CLI installed and configured (see https://geminicli.com/docs/get-started/deployment/). Text prompts run via the CLI using its own auth (login recommended); set `GEMINI_ALLOW_CLI_API_KEY=1` only if you want the CLI to use your API key as well.
 - Billing-enabled `GEMINI_API_KEY` **only** for image generation (Python client). This key is not passed to the CLI by default so text requests stay on the non-billed flow.
 - Optional: a preferred Gemini code and image model name (see `.env.example` defaults)
@@ -96,7 +97,7 @@ nvm use 20.19.4
 Direct Upload via Wrangler
 
 ```bash
-npm install -g wrangler@4.49.0
+npm install -g wrangler@4.53.0
 ```
 
 
