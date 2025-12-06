@@ -8,7 +8,12 @@ from typing import Optional
 import typer
 
 from .config import Config
-from .gemini_runner import generate_site, refine_site, suggest_follow_up_questions
+from .gemini_runner import (
+    generate_site,
+    refine_site,
+    suggest_follow_up_questions,
+    suggest_image_follow_up_questions,
+)
 from .image_generator import ensure_placeholder_assets, generate_images_for_site
 from .preview import serve_local
 from .cloudflare_api import deploy_to_pages, ensure_custom_domain
@@ -41,6 +46,7 @@ def new(
     generate_images: bool = typer.Option(True, "--images/--no-images", help="Generate images with GEMINI_API_KEY after creating the site"),
     overwrite_images: bool = typer.Option(False, "--overwrite-images", help="Regenerate images even if files already exist"),
     ask_follow_ups: bool = typer.Option(True, "--follow-ups/--no-follow-ups", help="Ask Gemini for clarifying questions before generation"),
+    ask_image_follow_ups: bool = typer.Option(True, "--image-follow-ups/--no-image-follow-ups", help="Ask Gemini for image-specific clarifications before generation"),
     debug: bool = typer.Option(False, "--debug", help="Print prompts sent to Gemini CLI"),
 ) -> None:
     """Generate a new landing page with Gemini CLI."""
@@ -59,7 +65,9 @@ def new(
 
     typer.echo(f"Using slug: {slug}")
     follow_up_context: Optional[str] = None
+    image_follow_up_context: Optional[str] = None
     questions: list[str] = []
+    image_questions: list[str] = []
     if ask_follow_ups:
         try:
             questions = suggest_follow_up_questions(product_prompt=prompt, project_root=root, config=config, debug=debug)
@@ -79,6 +87,28 @@ def new(
                 answers.append((q_text, response))
         if answers:
             follow_up_context = "\n".join(f"- {q} Answer: {a}" for q, a in answers)
+
+    if ask_image_follow_ups:
+        try:
+            image_questions = suggest_image_follow_up_questions(
+                product_prompt=prompt, project_root=root, config=config, debug=debug
+            )
+        except Exception as exc:
+            typer.echo(f"Could not fetch image follow-up questions from Gemini; continuing without them. ({exc})")
+
+    if image_questions:
+        total = len(image_questions)
+        label = "clarification" if total == 1 else "clarifications"
+        typer.echo(f"Gemini suggests {total} image {label}. Press Enter to skip any question.")
+        image_answers: list[tuple[str, str]] = []
+        for idx, question in enumerate(image_questions, start=1):
+            q_text = question.strip() or f"Image question {idx}"
+            typer.echo(f"Image Q{idx} (out of {total}): {q_text}")
+            response = typer.prompt("Answer", default="", show_default=False).strip()
+            if response:
+                image_answers.append((q_text, response))
+        if image_answers:
+            image_follow_up_context = "\n".join(f"- {q} Answer: {a}" for q, a in image_answers)
 
     generate_site(
         slug=slug,
@@ -105,6 +135,8 @@ def new(
                     project_root=root,
                     config=config,
                     overwrite=overwrite_images,
+                    image_follow_up_context=image_follow_up_context,
+                    debug=debug,
                 )
                 if generated_images:
                     typer.echo("Generated images:")

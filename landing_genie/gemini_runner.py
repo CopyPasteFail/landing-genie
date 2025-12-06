@@ -12,6 +12,7 @@ from .config import Config
 
 
 MAX_FOLLOW_UP_QUESTIONS = 20  # Centralized cap for how many clarifying questions Gemini can return.
+MAX_IMAGE_FOLLOW_UP_QUESTIONS = 8  # Cap how many image-specific clarifications we ever ask for.
 
 
 def _iter_json_objects(text: str) -> Iterator[dict[str, Any]]:
@@ -276,6 +277,49 @@ def _dedupe_questions(questions: list[str], max_questions: int) -> list[str]:
     return deduped
 
 
+def _parse_image_prompt_response(stdout: str, *, debug: bool = False) -> Optional[str]:
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+
+    def _debug(msg: str) -> None:
+        if debug_enabled:
+            print(msg)
+
+    truncated = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
+
+    def _extract_from_text(text: str) -> Optional[str]:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = None
+
+        if isinstance(data, dict):
+            for key in ("prompt", "image_prompt", "imagePrompt"):
+                val = data.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            response_field = data.get("response")
+            if isinstance(response_field, str):
+                nested = _extract_from_text(response_field)
+                if nested:
+                    return nested
+
+        stripped = _strip_code_fences(text)
+        if stripped != text:
+            nested = _extract_from_text(stripped)
+            if nested:
+                return nested
+
+        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+        return lines[0] if lines else None
+
+    prompt = _extract_from_text(stdout)
+    if prompt:
+        return prompt
+
+    _debug(f"[Gemini CLI debug] Could not parse image prompt from stdout:\n{truncated}")
+    return None
+
+
 def _load_prompt_snippets(project_root: Path) -> dict[str, str]:
     """
     Load optional prompt snippets from prompts/snippets.md, split by `## name` headers.
@@ -339,6 +383,82 @@ def suggest_follow_up_questions(
             print("[Gemini CLI debug] No follow-up questions extracted; continuing without them.")
 
     return deduped
+
+
+def suggest_image_follow_up_questions(
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    max_questions: int = MAX_IMAGE_FOLLOW_UP_QUESTIONS,
+    debug: bool = False,
+) -> list[str]:
+    """Ask Gemini CLI for clarifications specific to image generation."""
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "image_follow_up_questions_prompt.md"
+    if not template_path.exists():
+        return []
+
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ max_follow_up_questions }}", str(MAX_IMAGE_FOLLOW_UP_QUESTIONS))
+    )
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    parsed_questions = _parse_follow_up_questions(stdout, debug=debug)
+    return _dedupe_questions(parsed_questions, max_questions)
+
+
+def generate_image_prompt(
+    slot_src: str,
+    slot_alt: str,
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    follow_up_context: Optional[str] = None,
+    debug: bool = False,
+) -> Optional[str]:
+    """Ask Gemini CLI to craft a rich prompt for a specific image slot."""
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "image_prompt.md"
+    if not template_path.exists():
+        return None
+
+    clarifications = (follow_up_context or "None provided.").strip() or "None provided."
+    slot_alt_clean = slot_alt.strip() if slot_alt else ""
+    if not slot_alt_clean:
+        # Derive a human-friendly hint from the filename if no alt text exists.
+        slot_alt_clean = Path(slot_src).stem.replace("-", " ").replace("_", " ")
+
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ slot_src }}", slot_src)
+        .replace("{{ slot_alt }}", slot_alt_clean or "image for the landing page")
+        .replace("{{ image_follow_up_context }}", clarifications)
+    )
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    return _parse_image_prompt_response(stdout, debug=debug)
 
 
 def _run_gemini(
