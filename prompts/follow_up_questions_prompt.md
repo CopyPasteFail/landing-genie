@@ -3,6 +3,7 @@ You are preparing to write a landing page. Before drafting, surface every clarif
 - Product description: {{ product_prompt }}
 
 Ask up to {{ max_follow_up_questions }} focused questions. Make them specific and actionable so the user can define the page quickly. Cover audience, problem/promise, product stage and key proof, offer/pricing, primary CTA, tone/brand cues, visual/style preferences, sections to prioritize (hero, social proof, features, FAQ, contact), and any constraints (compliance, accessibility, timelines).
+Include a question that clarifies the product type (e.g., software, hardware, service, hybrid).
 
 Respond **only** with a JSON object of the form:
 {"questions": ["...", "...", "..."]}

@@ -1,7 +1,6 @@
 You are generating a static landing page for a product.
 
 - Product description: {{ product_prompt }}
-- Product type: {{ product_type }}
 - Target subdomain: {{ slug }}.{{ root_domain }}
 {{ follow_up_block }}
 
