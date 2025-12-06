@@ -12,6 +12,7 @@ import base64
 import re
 
 from .config import Config
+from .site_paths import normalize_site_dir
 
 
 _API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -104,6 +105,36 @@ def _fallback_image_prompt(slot: ImageSlot, product_prompt: str, image_follow_up
     return " ".join(prompt_parts)
 
 
+def _resolve_image_prompt_for_slot(
+    slot: ImageSlot,
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    image_follow_up_context: str | None = None,
+    debug: bool = False,
+) -> str:
+    from . import gemini_runner  # Local import to avoid circular dependency.
+
+    prompt_text = None
+    try:
+        prompt_text = gemini_runner.generate_image_prompt(
+            slot_src=slot.src,
+            slot_alt=slot.alt,
+            product_prompt=product_prompt,
+            project_root=project_root,
+            config=config,
+            follow_up_context=image_follow_up_context,
+            debug=debug,
+        )
+    except Exception as exc:
+        print(f"[Gemini Images] Falling back to default prompt for {slot.src}: {exc}")
+
+    return prompt_text or _fallback_image_prompt(
+        slot, product_prompt, image_follow_up_context=image_follow_up_context
+    )
+
+
 class _PartPayload(TypedDict):
     text: str
 
@@ -181,7 +212,7 @@ def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, _Usage
 
 def ensure_placeholder_assets(slug: str, project_root: Path) -> list[Path]:
     """Create lightweight placeholder files for any referenced assets that don't exist."""
-    site_dir = project_root / "sites" / slug
+    site_dir = normalize_site_dir(slug, project_root)
     if not site_dir.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
 
@@ -208,6 +239,40 @@ def ensure_placeholder_assets(slug: str, project_root: Path) -> list[Path]:
     return created
 
 
+def generate_image_prompts_for_site(
+    slug: str,
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    image_follow_up_context: str | None = None,
+    debug: bool = False,
+) -> list[tuple[str, str]]:
+    """
+    Build image prompts for each asset slot without calling the image generation model.
+    Returns a list of (asset_path, prompt_text) pairs.
+    """
+    site_dir = normalize_site_dir(slug, project_root)
+    index_path = site_dir / "index.html"
+    if not index_path.exists():
+        raise FileNotFoundError(f"Site directory not found: {site_dir}")
+
+    slots = _discover_image_slots(index_path)
+    prompts: list[tuple[str, str]] = []
+
+    for slot in slots:
+        prompt_text = _resolve_image_prompt_for_slot(
+            slot,
+            product_prompt,
+            project_root,
+            config,
+            image_follow_up_context=image_follow_up_context,
+            debug=debug,
+        )
+        prompts.append((slot.src, prompt_text))
+
+    return prompts
+
+
 def generate_images_for_site(
     slug: str,
     product_prompt: str,
@@ -221,7 +286,7 @@ def generate_images_for_site(
     if not api_key:
         raise RuntimeError("Set GEMINI_API_KEY to enable Gemini image generation.")
 
-    site_dir = project_root / "sites" / slug
+    site_dir = normalize_site_dir(slug, project_root)
     index_path = site_dir / "index.html"
     if not index_path.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
@@ -236,24 +301,13 @@ def generate_images_for_site(
         if target_path.exists() and not overwrite:
             continue
 
-        from . import gemini_runner  # Local import to avoid circular dependency.
-
-        prompt_text = None
-        try:
-            prompt_text = gemini_runner.generate_image_prompt(
-                slot_src=slot.src,
-                slot_alt=slot.alt,
-                product_prompt=product_prompt,
-                project_root=project_root,
-                config=config,
-                follow_up_context=image_follow_up_context,
-                debug=debug,
-            )
-        except Exception as exc:
-            print(f"[Gemini Images] Falling back to default prompt for {slot.src}: {exc}")
-
-        prompt_text = prompt_text or _fallback_image_prompt(
-            slot, product_prompt, image_follow_up_context=image_follow_up_context
+        prompt_text = _resolve_image_prompt_for_slot(
+            slot,
+            product_prompt,
+            project_root,
+            config,
+            image_follow_up_context=image_follow_up_context,
+            debug=debug,
         )
         image_bytes, usage = _request_image(prompt_text, config.gemini_image_model, api_key)
 

@@ -9,3 +9,4 @@ build/
 .idea/
 .vscode/
 node_modules/
+!.log/

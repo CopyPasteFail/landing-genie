@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from .config import Config
 from .gemini_runner import refine_site
 from .image_generator import ensure_placeholder_assets
+from .site_paths import normalize_site_dir
 
 # Track running preview servers so we can reuse an existing one instead of
 # attempting to bind the same port again.
@@ -280,7 +281,7 @@ def serve_local(
     port: int = 4173,
     debug: bool = False,
 ) -> str:
-    site_dir = project_root / "sites" / slug
+    site_dir = normalize_site_dir(slug, project_root)
     if not site_dir.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
 

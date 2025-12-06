@@ -14,7 +14,11 @@ from .gemini_runner import (
     suggest_follow_up_questions,
     suggest_image_follow_up_questions,
 )
-from .image_generator import ensure_placeholder_assets, generate_images_for_site
+from .image_generator import (
+    ensure_placeholder_assets,
+    generate_image_prompts_for_site,
+    generate_images_for_site,
+)
 from .preview import serve_local
 from .cloudflare_api import deploy_to_pages, ensure_custom_domain
 
@@ -68,6 +72,13 @@ def new(
     image_follow_up_context: Optional[str] = None
     questions: list[str] = []
     image_questions: list[str] = []
+
+    prompt_log_dir = root / ".log"
+    prompt_log_dir.mkdir(parents=True, exist_ok=True)
+    prompt_log_path = prompt_log_dir / "gemini_prompts.log"
+    os.environ["LANDING_GENIE_PROMPT_LOG_PATH"] = str(prompt_log_path)
+    typer.echo(f"Gemini prompts will be logged to {prompt_log_path}")
+
     if ask_follow_ups:
         try:
             questions = suggest_follow_up_questions(product_prompt=prompt, project_root=root, config=config, debug=debug)
@@ -122,6 +133,7 @@ def new(
 
     placeholder_created: list[Path] = []
     generated_images: list[Path] = []
+    image_prompts: list[tuple[str, str]] = []
 
     if generate_images:
         api_key_present = config.gemini_api_key or os.getenv("GEMINI_API_KEY")
@@ -146,6 +158,24 @@ def new(
                     typer.echo("No image placeholders found or images already existed; skipping generation.")
             except Exception as exc:
                 typer.echo(f"Image generation skipped: {exc}")
+    else:
+        try:
+            image_prompts = generate_image_prompts_for_site(
+                slug=slug,
+                product_prompt=prompt,
+                project_root=root,
+                config=config,
+                image_follow_up_context=image_follow_up_context,
+                debug=debug,
+            )
+            if image_prompts:
+                typer.echo("Image prompts generated (not sent to Gemini image model):")
+                for src, prompt_text in image_prompts:
+                    typer.echo(f"- {src}: {prompt_text}")
+            else:
+                typer.echo("No image placeholders found to generate prompts.")
+        except Exception as exc:
+            typer.echo(f"Image prompt generation skipped: {exc}")
     # Always ensure placeholders for any remaining referenced assets.
     placeholder_created = ensure_placeholder_assets(slug=slug, project_root=root)
     if placeholder_created:

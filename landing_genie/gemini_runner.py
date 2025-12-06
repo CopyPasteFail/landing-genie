@@ -9,10 +9,14 @@ from pathlib import Path
 from typing import Any, Iterator, Optional, cast
 
 from .config import Config
+from .site_paths import normalize_site_dir
 
 
-MAX_FOLLOW_UP_QUESTIONS = 20  # Centralized cap for how many clarifying questions Gemini can return.
-MAX_IMAGE_FOLLOW_UP_QUESTIONS = 8  # Cap how many image-specific clarifications we ever ask for.
+MAX_FOLLOW_UP_QUESTIONS = 2  # Centralized cap for how many clarifying questions Gemini can return.
+MAX_IMAGE_FOLLOW_UP_QUESTIONS = 2  # Cap how many image-specific clarifications we ever ask for.
+PROMPT_LOG_ENV_VAR = "LANDING_GENIE_PROMPT_LOG_PATH"
+PROMPT_LOG_MAX_BYTES_ENV_VAR = "LANDING_GENIE_PROMPT_LOG_MAX_BYTES"
+DEFAULT_PROMPT_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB cap
 
 
 def _iter_json_objects(text: str) -> Iterator[dict[str, Any]]:
@@ -151,6 +155,93 @@ def _strip_code_fences(text: str) -> str:
     """
     match = re.match(r"\s*```(?:json)?\s*(.*?)\s*```\s*$", text, flags=re.DOTALL | re.IGNORECASE)
     return match.group(1) if match else text.strip()
+
+
+def _prompt_log_max_bytes() -> int:
+    raw = os.getenv(PROMPT_LOG_MAX_BYTES_ENV_VAR)
+    if not raw:
+        return DEFAULT_PROMPT_LOG_MAX_BYTES
+    try:
+        value = int(raw)
+        return value if value > 0 else DEFAULT_PROMPT_LOG_MAX_BYTES
+    except ValueError:
+        return DEFAULT_PROMPT_LOG_MAX_BYTES
+
+
+def _enforce_log_cap(log_path: Path, max_bytes: int) -> None:
+    try:
+        size = log_path.stat().st_size
+    except OSError:
+        return
+    if size <= max_bytes:
+        return
+    try:
+        with log_path.open("rb") as fh:
+            if max_bytes <= 0:
+                data = b""
+            else:
+                fh.seek(-max_bytes, os.SEEK_END)
+                data = fh.read()
+        note = b"[truncated]\n"
+        if max_bytes > len(note):
+            data = note + data[-(max_bytes - len(note)) :]
+        else:
+            data = data[-max_bytes:]
+        with log_path.open("wb") as fh:
+            fh.write(data)
+    except Exception as exc:
+        print(f"[Gemini CLI debug] Failed to enforce prompt log cap: {exc}")
+
+
+def _append_prompt_log(entry: str) -> None:
+    log_path_str = os.getenv(PROMPT_LOG_ENV_VAR)
+    if not log_path_str:
+        return
+
+    try:
+        log_path = Path(log_path_str)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(entry)
+        _enforce_log_cap(log_path, _prompt_log_max_bytes())
+    except Exception as exc:
+        print(f"[Gemini CLI debug] Failed to log prompt to {log_path_str}: {exc}")
+
+
+def _log_prompt(prompt_text: str, model: str) -> None:
+    """Append the prompt being sent to Gemini CLI to a log file if configured."""
+    log_path_str = os.getenv(PROMPT_LOG_ENV_VAR)
+    if not log_path_str:
+        return
+
+    try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        divider = "=" * 72
+        entry = (
+            f"{divider}\n"
+            f"{timestamp} | model={model}\n"
+            f"{prompt_text}\n\n"
+        )
+        _append_prompt_log(entry)
+    except Exception as exc:
+        print(f"[Gemini CLI debug] Failed to log prompt to {log_path_str}: {exc}")
+
+
+def _log_image_prompt_result(slot_src: str, prompt_text: str) -> None:
+    log_path_str = os.getenv(PROMPT_LOG_ENV_VAR)
+    if not log_path_str or not prompt_text:
+        return
+    try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        divider = "-" * 72
+        entry = (
+            f"{divider}\n"
+            f"{timestamp} | image-prompt result | slot={slot_src}\n"
+            f"{prompt_text}\n\n"
+        )
+        _append_prompt_log(entry)
+    except Exception as exc:
+        print(f"[Gemini CLI debug] Failed to log image prompt result: {exc}")
 
 
 def _extract_questions_from_obj(obj: Any) -> list[str]:
@@ -458,7 +549,10 @@ def generate_image_prompt(
         debug=debug,
     ) or ""
 
-    return _parse_image_prompt_response(stdout, debug=debug)
+    prompt_result = _parse_image_prompt_response(stdout, debug=debug)
+    if prompt_result:
+        _log_image_prompt_result(slot_src, prompt_result)
+    return prompt_result
 
 
 def _run_gemini(
@@ -472,6 +566,7 @@ def _run_gemini(
     debug: bool = False,
 ) -> Optional[str]:
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+    _log_prompt(prompt_text, model)
     if debug_enabled:
         print("[Gemini CLI debug] Prompt to be sent:\n" + prompt_text + "\n--- end prompt ---")
     cmd = [
@@ -600,6 +695,7 @@ def generate_site(
     )
 
     _run_gemini(text, config.gemini_code_model, config, cwd=site_dir, debug=debug)
+    normalize_site_dir(slug, project_root)
 
 
 def refine_site(slug: str, feedback: str, project_root: Path, config: Config, *, debug: bool = False) -> None:
@@ -608,7 +704,7 @@ def refine_site(slug: str, feedback: str, project_root: Path, config: Config, *,
     if not template_path.exists():
         raise FileNotFoundError(f"Refine prompt template not found at {template_path}")
 
-    site_dir = project_root / "sites" / slug
+    site_dir = normalize_site_dir(slug, project_root)
     if not site_dir.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
 
