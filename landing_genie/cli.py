@@ -57,15 +57,15 @@ def new(
     config = Config.load()
     root = _project_root()
 
-    slug = suggested_subdomain or typer.prompt("Enter desired subdomain slug (no spaces)")
-    slug = slug.strip().lower().replace(" ", "-")
+    slug_input = suggested_subdomain if suggested_subdomain is not None else typer.prompt("Enter desired subdomain slug (no spaces)")
+    slug = slug_input.strip().lower().replace(" ", "-")
 
-    if not prompt:
-        prompt = typer.prompt("Enter a product description and target audience")
-    prompt = prompt.strip()
-    if not prompt:
+    prompt_input = prompt if prompt is not None else typer.prompt("Enter a product description and target audience")
+    prompt_clean = prompt_input.strip()
+    if not prompt_clean:
         typer.echo("A prompt is required to generate a landing page.")
         raise typer.Exit(code=1)
+    product_prompt: str = prompt_clean
 
     typer.echo(f"Using slug: {slug}")
     follow_up_context: Optional[str] = None
@@ -85,7 +85,7 @@ def new(
 
     if ask_follow_ups:
         try:
-            questions = suggest_follow_up_questions(product_prompt=prompt, project_root=root, config=config, debug=debug)
+            questions = suggest_follow_up_questions(product_prompt=product_prompt, project_root=root, config=config, debug=debug)
         except Exception as exc:
             typer.echo(f"Could not fetch follow-up questions from Gemini; continuing without them. ({exc})")
 
@@ -106,7 +106,7 @@ def new(
     if ask_image_follow_ups:
         try:
             image_questions = suggest_image_follow_up_questions(
-                product_prompt=prompt, project_root=root, config=config, debug=debug
+                product_prompt=product_prompt, project_root=root, config=config, debug=debug
             )
         except Exception as exc:
             typer.echo(f"Could not fetch image follow-up questions from Gemini; continuing without them. ({exc})")
@@ -127,7 +127,7 @@ def new(
 
     generate_site(
         slug=slug,
-        product_prompt=prompt,
+        product_prompt=product_prompt,
         project_root=root,
         config=config,
         follow_up_context=follow_up_context,
@@ -147,7 +147,7 @@ def new(
             try:
                 generated_images = generate_images_for_site(
                     slug=slug,
-                    product_prompt=prompt,
+                    product_prompt=product_prompt,
                     project_root=root,
                     config=config,
                     overwrite=overwrite_images,
@@ -166,7 +166,7 @@ def new(
         try:
             image_prompts = generate_image_prompts_for_site(
                 slug=slug,
-                product_prompt=prompt,
+                product_prompt=product_prompt,
                 project_root=root,
                 config=config,
                 image_follow_up_context=image_follow_up_context,
@@ -264,8 +264,8 @@ def images(
         typer.echo("No image placeholders found or images already existed; nothing to do.")
 
 
-@app.command()
-def list() -> None:
+@app.command(name="list")
+def list_sites() -> None:
     """List generated landing pages under sites/."""
     root = _project_root()
     sites_dir = root / "sites"

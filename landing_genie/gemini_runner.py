@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Iterator, Optional, cast
+from typing import Any, Iterator, Mapping, Optional, cast
 
 from .config import Config
 from .site_paths import normalize_site_dir
@@ -134,35 +134,6 @@ def _extract_usage(stdout: str, model: str) -> tuple[Optional[int], Optional[int
     return prompt_tokens, completion_tokens, total_tokens
 
 
-def _extract_candidate_texts(obj: dict[str, Any]) -> list[str]:
-    texts: list[str] = []
-
-    def _append_text(value: Any) -> None:
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped:
-                texts.append(stripped)
-
-    candidates = obj.get("candidates")
-    if isinstance(candidates, list):
-        for candidate in candidates:
-            if not isinstance(candidate, dict):
-                continue
-            _append_text(candidate.get("text"))
-
-            content = candidate.get("content")
-            if isinstance(content, dict):
-                parts = content.get("parts")
-                if isinstance(parts, list):
-                    for part in parts:
-                        if isinstance(part, dict):
-                            _append_text(part.get("text"))
-            _append_text(candidate.get("output_text"))
-
-    _append_text(obj.get("text"))
-    return texts
-
-
 def _strip_code_fences(text: str) -> str:
     """
     Remove surrounding Markdown fences such as ```json ... ``` or ``` ... ```.
@@ -194,9 +165,8 @@ def _prompt_log_max_bytes() -> int:
 
 
 def _prompt_log_path() -> Optional[Path]:
-    raw = os.getenv(PROMPT_LOG_ENV_VAR, DEFAULT_PROMPT_LOG_PATH)
-    if raw is None:
-        return None
+    env_raw = os.getenv(PROMPT_LOG_ENV_VAR)
+    raw = env_raw if env_raw is not None else DEFAULT_PROMPT_LOG_PATH
     raw = raw.strip()
     if raw == "":
         return None
@@ -292,23 +262,33 @@ def _parse_image_prompt_batch_response(stdout: str, *, debug: bool = False) -> d
 
     def _extract_from_text(text: str) -> dict[str, str]:
         try:
-            data = json.loads(text)
+            data_obj = json.loads(text)
         except json.JSONDecodeError:
-            data = None
-        if isinstance(data, dict):
-            prompts = data.get("prompts")
+            data_obj = None
+        if isinstance(data_obj, dict):
+            data_dict = cast(dict[str, Any], data_obj)
+            prompts_field = data_dict.get("prompts")
+            prompts = cast(list[object] | None, prompts_field) if isinstance(prompts_field, list) else None
             results: dict[str, str] = {}
-            if isinstance(prompts, list):
+            if prompts:
                 for item in prompts:
                     if not isinstance(item, dict):
                         continue
-                    src = item.get("src")
-                    prompt = item.get("prompt") or item.get("image_prompt") or item.get("imagePrompt")
-                    if isinstance(src, str) and isinstance(prompt, str) and src.strip() and prompt.strip():
-                        results[src.strip()] = prompt.strip()
+                    item_dict = cast(dict[str, Any], item)
+                    src_raw = cast(str | None, item_dict.get("src"))
+                    prompt_raw = cast(
+                        str | None,
+                        item_dict.get("prompt")
+                        or item_dict.get("image_prompt")
+                        or item_dict.get("imagePrompt"),
+                    )
+                    src = src_raw.strip() if isinstance(src_raw, str) else ""
+                    prompt = prompt_raw.strip() if isinstance(prompt_raw, str) else ""
+                    if src and prompt:
+                        results[src] = prompt
             if results:
                 return results
-            response_field = data.get("response")
+            response_field = data_dict.get("response")
             if isinstance(response_field, str):
                 nested = _extract_from_text(response_field)
                 if nested:
@@ -326,13 +306,11 @@ def _parse_image_prompt_batch_response(stdout: str, *, debug: bool = False) -> d
     return results
 
 
-def _extract_questions_from_obj(obj: Any) -> list[str]:
+def _extract_questions_from_obj(obj: Mapping[str, Any]) -> list[str]:
     questions: list[str] = []
-    if not isinstance(obj, dict):
-        return questions
     raw = obj.get("questions")
     if isinstance(raw, list):
-        for q in raw:
+        for q in cast(list[object], raw):
             if isinstance(q, str):
                 q_clean = q.strip()
                 if q_clean:
@@ -349,9 +327,10 @@ def _parse_questions_from_text(text: str) -> list[str]:
         parsed = None
 
     if isinstance(parsed, dict):
-        raw = parsed.get("questions")
+        parsed_dict = cast(dict[str, Any], parsed)
+        raw = parsed_dict.get("questions")
         if isinstance(raw, list):
-            for q in raw:
+            for q in cast(list[object], raw):
                 if isinstance(q, str):
                     q_clean = q.strip()
                     if q_clean:
@@ -377,14 +356,16 @@ def _parse_follow_up_questions(stdout: str, *, debug: bool = False) -> list[str]
     _debug(f"[Gemini CLI debug] Raw follow-up stdout ({len(stdout)} chars):\n{truncated_stdout}")
 
     try:
-        outer = json.loads(stdout)
+        outer_raw = json.loads(stdout)
     except json.JSONDecodeError as exc:
         _debug("[Gemini CLI debug] Failed to parse follow-up stdout as JSON; see raw stdout above.")
         raise ValueError("Gemini follow-up questions response was not valid JSON") from exc
 
-    if not isinstance(outer, dict):
-        _debug(f"[Gemini CLI debug] Follow-up stdout JSON was not an object: {type(outer).__name__}")
+    if not isinstance(outer_raw, dict):
+        _debug(f"[Gemini CLI debug] Follow-up stdout JSON was not an object: {type(outer_raw).__name__}")
         raise ValueError("Gemini follow-up questions response must be a JSON object")
+
+    outer: dict[str, Any] = cast(dict[str, Any], outer_raw)
 
     direct_questions = _extract_questions_from_obj(outer)
     if direct_questions:
@@ -403,13 +384,19 @@ def _parse_follow_up_questions(stdout: str, *, debug: bool = False) -> list[str]
     truncated_response = stripped if len(stripped) <= 4000 else stripped[:4000] + "...[truncated]"
 
     try:
-        inner = json.loads(stripped)
+        inner_raw = json.loads(stripped)
     except json.JSONDecodeError as exc:
         _debug(
             "[Gemini CLI debug] Follow-up response was not valid JSON; "
             f"raw response:\n{truncated_response}"
         )
         return _parse_questions_from_text(stripped)
+
+    if not isinstance(inner_raw, dict):
+        _debug("[Gemini CLI debug] Parsed follow-up response was not a JSON object; using text fallback.")
+        return _parse_questions_from_text(stripped)
+
+    inner = cast(dict[str, Any], inner_raw)
 
     inner_questions = _extract_questions_from_obj(inner)
     if inner_questions:
@@ -461,16 +448,17 @@ def _parse_image_prompt_response(stdout: str, *, debug: bool = False) -> Optiona
 
     def _extract_from_text(text: str) -> Optional[str]:
         try:
-            data = json.loads(text)
+            data_obj = json.loads(text)
         except json.JSONDecodeError:
-            data = None
+            data_obj = None
 
-        if isinstance(data, dict):
+        if isinstance(data_obj, dict):
+            data_dict = cast(dict[str, Any], data_obj)
             for key in ("prompt", "image_prompt", "imagePrompt"):
-                val = data.get(key)
+                val = data_dict.get(key)
                 if isinstance(val, str) and val.strip():
                     return val.strip()
-            response_field = data.get("response")
+            response_field = data_dict.get("response")
             if isinstance(response_field, str):
                 nested = _extract_from_text(response_field)
                 if nested:
@@ -605,7 +593,7 @@ def generate_image_prompt(
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "image_prompt.md"
     if not template_path.exists():
-        return None
+        raise FileNotFoundError(f"Image prompt template not found at {template_path}")
 
     clarifications = (follow_up_context or "None provided.").strip() or "None provided."
     slot_alt_clean = slot_alt.strip() if slot_alt else ""

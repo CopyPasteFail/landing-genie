@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
 from threading import Thread
-from typing import Any
+from typing import Any, TypedDict, cast
 from urllib.parse import urlparse
 
 from .config import Config
@@ -36,6 +36,12 @@ _SERVERS: dict[int, _ServerState] = {}
 
 class ReusableTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
+
+
+class _RefinePayload(TypedDict, total=False):
+    instruction: str
+    sectionText: str
+    sectionLabel: str
 
 
 def _stop_server(port: int) -> None:
@@ -367,8 +373,11 @@ def serve_local(
             except ValueError:
                 length = 0
             raw_body = self.rfile.read(length)
+            payload: _RefinePayload = {}
             try:
-                payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+                decoded_body: object = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+                if isinstance(decoded_body, dict):
+                    payload = cast(_RefinePayload, decoded_body)
             except json.JSONDecodeError:
                 payload = {}
 

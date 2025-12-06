@@ -18,6 +18,9 @@ landing-genie = "landing_genie.cli:app"
 include = ["landing_genie*"]
 exclude = ["prompts", "sites"]
 
+[tool.setuptools.package-data]
+"landing_genie" = ["placeholders/*"]
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
