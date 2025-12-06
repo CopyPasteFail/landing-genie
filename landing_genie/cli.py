@@ -30,6 +30,17 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _enable_readline() -> None:
+    """
+    Import readline when available so arrow keys work naturally in interactive prompts.
+    """
+    try:
+        import readline  # noqa: F401
+    except ImportError:
+        # Windows or minimal Python builds may not ship readline; fall back silently.
+        return
+
+
 @app.command()
 def init() -> None:
     """Bootstrap local environment and check config."""
@@ -55,6 +66,7 @@ def new(
     debug: bool = typer.Option(False, "--debug", help="Print prompts sent to Gemini CLI"),
 ) -> None:
     """Generate a new landing page with Gemini CLI."""
+    _enable_readline()
     config = Config.load()
     root = _project_root()
 
@@ -259,6 +271,7 @@ def images(
         typer.echo("GEMINI_API_KEY not set; cannot generate images. Export it and retry.")
         raise typer.Exit(code=1)
 
+    _enable_readline()
     product_prompt = prompt or typer.prompt("Enter a short product description to guide the images")
 
     try:

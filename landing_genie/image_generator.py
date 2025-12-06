@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import base64
-import os
+import hashlib
 import importlib.resources as resources
+import os
+import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable, TypedDict, cast
 
 import requests
-import re
 
 from .config import Config
 from .site_paths import normalize_site_dir
@@ -55,6 +56,12 @@ def _discover_image_slots(index_path: Path) -> list[ImageSlot]:
 
 
 _ASSET_PATTERN = re.compile(r"assets/[A-Za-z0-9._/-]+")
+# Update these hashes if placeholder assets change.
+_PLACEHOLDER_HASHES = {
+    ".png": "2b49ed28439edd7bb0a55d82812e8e88b01b36c2433de346f2affa0ce2e1e22d",
+    ".jpg": "2a529eb91c32586932397e67140b475fe222d21e85e3fc37231f616dc685ea91",
+    ".jpeg": "2a529eb91c32586932397e67140b475fe222d21e85e3fc37231f616dc685ea91",
+}
 
 
 def _discover_asset_paths(site_dir: Path) -> set[str]:
@@ -72,6 +79,14 @@ def _discover_asset_paths(site_dir: Path) -> set[str]:
 def _placeholder_bytes(ext: str) -> bytes:
     filename = 'placeholder.jpg' if ext in {'.jpg', '.jpeg'} else 'placeholder.png'
     return resources.files(__package__).joinpath('placeholders').joinpath(filename).read_bytes()
+
+
+def _hash_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _resolve_image_prompt_for_slot(
@@ -197,6 +212,32 @@ def ensure_placeholder_assets(slug: str, project_root: Path) -> list[Path]:
     return created
 
 
+def _is_placeholder_asset(path: Path) -> bool:
+    """
+    Determine whether an existing asset looks like one of our generated placeholders.
+
+    This lets the image generator ignore placeholders when deciding whether to skip
+    regeneration so real images are produced without forcing --overwrite.
+    """
+    ext = path.suffix.lower()
+    try:
+        if path.stat().st_size == 0:
+            return True
+    except OSError:
+        return False
+    expected_hash = _PLACEHOLDER_HASHES.get(ext)
+    if expected_hash:
+        try:
+            return _hash_file(path) == expected_hash
+        except OSError:
+            return False
+    # Fallback for unexpected suffixes: compare to bundled placeholder bytes.
+    try:
+        return path.read_bytes() == _placeholder_bytes(ext)
+    except Exception:
+        return False
+
+
 def generate_image_prompts_for_site(
     slug: str,
     product_prompt: str,
@@ -288,7 +329,7 @@ def generate_images_for_site(
     generated: list[Path] = []
     for slot in slots:
         target_path = site_dir / slot.src
-        if target_path.exists() and not overwrite:
+        if target_path.exists() and not overwrite and not _is_placeholder_asset(target_path):
             continue
 
         prompt_text = prompts_map.get(slot.src)

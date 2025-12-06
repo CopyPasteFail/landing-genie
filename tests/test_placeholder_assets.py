@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from landing_genie.image_generator import ensure_placeholder_assets
+from landing_genie.image_generator import (
+    _is_placeholder_asset,  # type: ignore[reportPrivateUsage]
+    _placeholder_bytes,  # type: ignore[reportPrivateUsage]
+    ensure_placeholder_assets,
+)
 
 
 def test_zero_byte_assets_are_replaced(tmp_path: Path) -> None:
@@ -27,3 +31,21 @@ def test_zero_byte_assets_are_replaced(tmp_path: Path) -> None:
         asset_path = assets_dir / name
         assert asset_path.exists()
         assert asset_path.stat().st_size > 0
+
+
+def test_is_placeholder_detection(tmp_path: Path) -> None:
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    placeholder_path = assets_dir / "img.png"
+    placeholder_path.write_bytes(_placeholder_bytes(".png"))
+
+    zero_byte_path = assets_dir / "empty.png"
+    zero_byte_path.write_bytes(b"")
+
+    random_path = assets_dir / "random.png"
+    random_path.write_bytes(b"not a placeholder image")
+
+    assert _is_placeholder_asset(placeholder_path) is True
+    assert _is_placeholder_asset(zero_byte_path) is True
+    assert _is_placeholder_asset(random_path) is False
