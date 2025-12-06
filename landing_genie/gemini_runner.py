@@ -12,11 +12,25 @@ from .config import Config
 from .site_paths import normalize_site_dir
 
 
-MAX_FOLLOW_UP_QUESTIONS = 2  # Centralized cap for how many clarifying questions Gemini can return.
-MAX_IMAGE_FOLLOW_UP_QUESTIONS = 2  # Cap how many image-specific clarifications we ever ask for.
+def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+        return value if value >= min_value else default
+    except ValueError:
+        return default
+
+
+MAX_FOLLOW_UP_QUESTIONS = _env_int("LANDING_GENIE_MAX_FOLLOW_UP_QUESTIONS", 20)
+MAX_IMAGE_FOLLOW_UP_QUESTIONS = _env_int("LANDING_GENIE_MAX_IMAGE_FOLLOW_UP_QUESTIONS", 20)
 PROMPT_LOG_ENV_VAR = "LANDING_GENIE_PROMPT_LOG_PATH"
 PROMPT_LOG_MAX_BYTES_ENV_VAR = "LANDING_GENIE_PROMPT_LOG_MAX_BYTES"
-DEFAULT_PROMPT_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB cap
+PROMPT_LOG_MAX_MB_ENV_VAR = "LANDING_GENIE_PROMPT_LOG_MAX_MB"
+DEFAULT_PROMPT_LOG_MAX_MB = 5
+DEFAULT_PROMPT_LOG_MAX_BYTES = DEFAULT_PROMPT_LOG_MAX_MB * 1024 * 1024
+DEFAULT_PROMPT_LOG_PATH = ".log/"
 
 
 def _iter_json_objects(text: str) -> Iterator[dict[str, Any]]:
@@ -158,14 +172,38 @@ def _strip_code_fences(text: str) -> str:
 
 
 def _prompt_log_max_bytes() -> int:
-    raw = os.getenv(PROMPT_LOG_MAX_BYTES_ENV_VAR)
-    if not raw:
-        return DEFAULT_PROMPT_LOG_MAX_BYTES
-    try:
-        value = int(raw)
-        return value if value > 0 else DEFAULT_PROMPT_LOG_MAX_BYTES
-    except ValueError:
-        return DEFAULT_PROMPT_LOG_MAX_BYTES
+    raw_mb = os.getenv(PROMPT_LOG_MAX_MB_ENV_VAR)
+    if raw_mb:
+        try:
+            value_mb = float(raw_mb)
+            value_bytes = int(value_mb * 1024 * 1024)
+            if value_bytes > 0:
+                return value_bytes
+        except ValueError:
+            pass
+
+    raw_bytes = os.getenv(PROMPT_LOG_MAX_BYTES_ENV_VAR)
+    if raw_bytes:
+        try:
+            value_bytes = int(raw_bytes)
+            if value_bytes > 0:
+                return value_bytes
+        except ValueError:
+            pass
+    return DEFAULT_PROMPT_LOG_MAX_BYTES
+
+
+def _prompt_log_path() -> Optional[Path]:
+    raw = os.getenv(PROMPT_LOG_ENV_VAR, DEFAULT_PROMPT_LOG_PATH)
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if raw == "":
+        return None
+    path = Path(raw)
+    if raw.endswith(("/", os.sep)) or path.is_dir():
+        path = path / "gemini_prompts.log"
+    return path
 
 
 def _enforce_log_cap(log_path: Path, max_bytes: int) -> None:
@@ -194,24 +232,23 @@ def _enforce_log_cap(log_path: Path, max_bytes: int) -> None:
 
 
 def _append_prompt_log(entry: str) -> None:
-    log_path_str = os.getenv(PROMPT_LOG_ENV_VAR)
-    if not log_path_str:
+    log_path = _prompt_log_path()
+    if not log_path:
         return
 
     try:
-        log_path = Path(log_path_str)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(entry)
         _enforce_log_cap(log_path, _prompt_log_max_bytes())
     except Exception as exc:
-        print(f"[Gemini CLI debug] Failed to log prompt to {log_path_str}: {exc}")
+        print(f"[Gemini CLI debug] Failed to log prompt to {log_path}: {exc}")
 
 
 def _log_prompt(prompt_text: str, model: str) -> None:
     """Append the prompt being sent to Gemini CLI to a log file if configured."""
-    log_path_str = os.getenv(PROMPT_LOG_ENV_VAR)
-    if not log_path_str:
+    log_path = _prompt_log_path()
+    if not log_path:
         return
 
     try:
@@ -224,12 +261,12 @@ def _log_prompt(prompt_text: str, model: str) -> None:
         )
         _append_prompt_log(entry)
     except Exception as exc:
-        print(f"[Gemini CLI debug] Failed to log prompt to {log_path_str}: {exc}")
+        print(f"[Gemini CLI debug] Failed to log prompt to {log_path}: {exc}")
 
 
 def _log_image_prompt_result(slot_src: str, prompt_text: str) -> None:
-    log_path_str = os.getenv(PROMPT_LOG_ENV_VAR)
-    if not log_path_str or not prompt_text:
+    log_path = _prompt_log_path()
+    if not log_path or not prompt_text:
         return
     try:
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")

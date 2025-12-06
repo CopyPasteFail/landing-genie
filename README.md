@@ -57,16 +57,7 @@ pip install -e .
 cp .env.example .env
 ```
 
-Edit `.env`:
-- `ROOT_DOMAIN=your-domain.tld` (the domain in Cloudflare)
-- `CLOUDFLARE_ACCOUNT_ID=...`
-- `CLOUDFLARE_API_TOKEN=...` (token with Pages+DNS edit)
-- `GEMINI_CODE_MODEL=...` / `GEMINI_IMAGE_MODEL=...` (optional overrides)
-- `GEMINI_IMAGE_COST_PER_1K_TOKENS=` (optional; USD price per 1,000 tokens for your chosen Gemini image model, see https://ai.google.dev/gemini-api/docs/pricing)
-- `GEMINI_CLI_COMMAND=gemini` (default: `gemini`; change if your CLI is named differently)
-- `GEMINI_ALLOW_CLI_API_KEY=0` (default: `0`; set to `1` only if you want the CLI to consume `GEMINI_API_KEY`)
-- `GEMINI_API_KEY=` (enable image generation via Python; not passed to the CLI unless `GEMINI_ALLOW_CLI_API_KEY=1`)
-- `GEMINI_TELEMETRY_OTLP_ENDPOINT=` (optional OTLP collector endpoint; landing-genie sets this for CLI runs, while `.gemini/settings.json` keeps `otlpEndpoint` blank so ad-hoc CLI usage stays quiet)
+Edit `.env` (see **Environment variables** below for meanings and defaults).
 
 ### 4) Prepare NVM
 
@@ -197,6 +188,27 @@ Notes:
 - If you still see quota errors, ensure billing is active on the same project where the API key was created.
 
 ## Appendix: Cloudflare setup checklist
+
+## Environment variables
+
+All configuration is read from `.env` (sample in `.env.example`). Defaults apply when a variable is unset or blank.
+
+| Variable | Required? / Default | Purpose |
+| --- | --- | --- |
+| `ROOT_DOMAIN` | required | Root domain you own (pointed to Cloudflare) for generated subdomains. |
+| `CLOUDFLARE_ACCOUNT_ID` | required | Cloudflare account ID used for Pages and DNS. |
+| `CLOUDFLARE_API_TOKEN` | required | API token with **Pages:Edit** and **DNS:Edit** for the account. |
+| `GEMINI_CODE_MODEL` | default `gemini-2.5-pro` | Text/code model for page generation via Gemini CLI. |
+| `GEMINI_IMAGE_MODEL` | default `gemini-2.5-flash-image` | Image model for rendering assets. |
+| `GEMINI_IMAGE_COST_PER_1K_TOKENS` | optional | USD cost per 1k tokens for your image model (for cost reporting). |
+| `GEMINI_CLI_COMMAND` | default `gemini` | Executable name/path for Gemini CLI. |
+| `GEMINI_API_KEY` | optional | Billing-enabled API key used by Python image generation (not passed to CLI unless allowed). |
+| `GEMINI_ALLOW_CLI_API_KEY` | default unset/`0` | Set to `1` if you want Gemini CLI text calls to use `GEMINI_API_KEY` instead of CLI login. |
+| `GEMINI_TELEMETRY_OTLP_ENDPOINT` | optional | OTLP collector endpoint; forwarded to CLI runs initiated by landing-genie. Leave blank to rely on the CLI settings file for interactive use. |
+| `LANDING_GENIE_PROMPT_LOG_PATH` | default `.log/` | Path or directory for prompt logs. If a directory or ends with `/`, logs to `<dir>/gemini_prompts.log`. |
+| `LANDING_GENIE_PROMPT_LOG_MAX_MB` | default `5` | Max prompt log size in MB before truncation (respects `LANDING_GENIE_PROMPT_LOG_MAX_BYTES` if set). |
+| `LANDING_GENIE_MAX_FOLLOW_UP_QUESTIONS` | default `20` | Max clarifying questions for text prompts. |
+| `LANDING_GENIE_MAX_IMAGE_FOLLOW_UP_QUESTIONS` | default `20` | Max clarifying questions for image prompts. |
 
 1) Move DNS to Cloudflare  
 - Sign up/sign in to Cloudflare and add your domain.  
