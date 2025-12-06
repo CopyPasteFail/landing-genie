@@ -600,7 +600,7 @@ def generate_image_prompt(
     *,
     follow_up_context: Optional[str] = None,
     debug: bool = False,
-) -> Optional[str]:
+) -> str:
     """Ask Gemini CLI to craft a rich prompt for a specific image slot."""
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "image_prompt.md"
@@ -632,8 +632,12 @@ def generate_image_prompt(
     ) or ""
 
     prompt_result = _parse_image_prompt_response(stdout, debug=debug)
-    if prompt_result:
-        _log_image_prompt_result(slot_src, prompt_result)
+    if not prompt_result:
+        truncated = stdout if len(stdout) <= 1000 else stdout[:1000] + "...[truncated]"
+        raise RuntimeError(
+            f"Gemini image prompt response could not be parsed for slot {slot_src}; stdout sample:\n{truncated}"
+        )
+    _log_image_prompt_result(slot_src, prompt_result)
     return prompt_result
 
 
@@ -681,6 +685,12 @@ def generate_image_prompts_batch(
     ) or ""
 
     prompts_map = _parse_image_prompt_batch_response(stdout, debug=debug)
+    if not prompts_map:
+        truncated = stdout if len(stdout) <= 1000 else stdout[:1000] + "...[truncated]"
+        raise RuntimeError(
+            "Gemini batch image prompt response could not be parsed; no prompts returned. "
+            f"Stdout sample:\n{truncated}"
+        )
     for src, prompt in prompts_map.items():
         _log_image_prompt_result(src, prompt)
     return prompts_map

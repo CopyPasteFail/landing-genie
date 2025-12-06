@@ -12,7 +12,7 @@ Tasks:
 2. Apply incremental edits that address the feedback.
    - Prefer focused changes over a full rewrite.
 3. Keep the overall structure: hero, problem, solution, features, social proof, contact form.
-4. Ensure the contact form still posts to `/api/contact` with fields: name, email, message.
+4. Ensure the contact form still posts to `/api/contact` with fields: name, email, phone (optional), message, and shows a phone hint/placeholder of `+1-123456789` while validating only digits and hyphens with an optional leading `+`.
 5. Keep the CSS and JS in separate files.
 
 Use the file tools to update files in this directory (and its subfolders) and then output a short summary of what you changed.

@@ -337,7 +337,13 @@ def serve_local(
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             if write_body:
-                self.wfile.write(data)
+                try:
+                    self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError):
+                    # Client closed the connection before we finished writing; ignore quietly.
+                    if debug:
+                        print("[Preview] Client disconnected before response body was sent.")
+                    return
 
         def do_HEAD(self) -> None:
             parsed = urlparse(self.path)

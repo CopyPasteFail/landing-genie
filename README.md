@@ -23,7 +23,7 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 
 ### Gemini free-tier rate limits (API)
 
-- Rate limits are enforced per project (not per API key) and are checked independently across RPM (requests per minute), TPM (input tokens per minute), and RPD (requests per day). Exceeding any dimension triggers a rate limit error; RPD resets at midnight Pacific.
+- Rate limits are enforced per project (not per API key) and are checked independently across RPM (requests per minute), TPM ((input) tokens per minute), and RPD (requests per day). Exceeding any dimension triggers a rate limit error; RPD resets at midnight Pacific.
 - Limits vary by model and some limits are model-specific. Common text-out free-tier limits:
 
 | Model | RPM | TPM (input) | RPD |
@@ -143,7 +143,7 @@ Notes:
 
 - `landing-genie new`  
   Generate a new landing using Gemini CLI, gather quick clarifications, serve locally for review, and allow iterative refinements. If `--prompt` is omitted, the CLI will ask for the product description interactively. Pass `--no-images` to skip the post-generation image step. Add `--debug` to print the full prompt sent to Gemini CLI for this run.
-  - Add `--no-follow-ups` to skip asking Gemini for clarifying questions (handy for quick iterations or scripted runs).
+  - Add `--no-follow-ups` to skip asking Gemini for clarifying questions (handy for quick iterations or scripted runs). This also skips image follow-ups; re-enable them explicitly with `--image-follow-ups` if needed, or disable only image follow-ups with `--no-image-follow-ups`.
 
 - `landing-genie deploy <slug>`  
   Deploy an existing landing under `sites/<slug>` to Cloudflare Pages, creating a dedicated Pages project named `lp-<slug>-<rootdomain>` (e.g., `lp-smart-forget-ailablife`) and attaching the custom subdomain on your root domain.

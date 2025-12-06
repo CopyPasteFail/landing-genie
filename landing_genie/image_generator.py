@@ -98,13 +98,6 @@ def _image_prompt(slot: ImageSlot, product_prompt: str) -> str:
     return " ".join(prompt_parts)
 
 
-def _fallback_image_prompt(slot: ImageSlot, product_prompt: str, image_follow_up_context: str | None = None) -> str:
-    prompt_parts = [_image_prompt(slot, product_prompt)]
-    if image_follow_up_context:
-        prompt_parts.append(f"User preferences: {image_follow_up_context}")
-    return " ".join(prompt_parts)
-
-
 def _resolve_image_prompt_for_slot(
     slot: ImageSlot,
     product_prompt: str,
@@ -116,29 +109,15 @@ def _resolve_image_prompt_for_slot(
 ) -> str:
     from . import gemini_runner  # Local import to avoid circular dependency.
 
-    prompt_text = None
-    try:
-        prompt_text = gemini_runner.generate_image_prompt(
-            slot_src=slot.src,
-            slot_alt=slot.alt,
-            product_prompt=product_prompt,
-            project_root=project_root,
-            config=config,
-            follow_up_context=image_follow_up_context,
-            debug=debug,
-        )
-    except Exception as exc:
-        print(f"[Gemini Images] Falling back to default prompt for {slot.src}: {exc}")
-
-    prompt_text = prompt_text or _fallback_image_prompt(
-        slot, product_prompt, image_follow_up_context=image_follow_up_context
+    return gemini_runner.generate_image_prompt(
+        slot_src=slot.src,
+        slot_alt=slot.alt,
+        product_prompt=product_prompt,
+        project_root=project_root,
+        config=config,
+        follow_up_context=image_follow_up_context,
+        debug=debug,
     )
-    if prompt_text:
-        try:
-            gemini_runner._log_image_prompt_result(slot.src, prompt_text)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-    return prompt_text
 
 
 class _PartPayload(TypedDict):
@@ -273,21 +252,16 @@ def generate_image_prompts_for_site(
         return Path(slot.src).stem.replace("-", " ").replace("_", " ")
 
     slots_payload = [{"src": slot.src, "alt": _slot_alt(slot)} for slot in slots]
-    prompts_map: dict[str, str] = {}
+    from . import gemini_runner  # Local import to avoid circular dependency.
 
-    try:
-        from . import gemini_runner  # Local import to avoid circular dependency.
-
-        prompts_map = gemini_runner.generate_image_prompts_batch(
-            slots_payload,
-            product_prompt,
-            project_root,
-            config,
-            follow_up_context=image_follow_up_context,
-            debug=debug,
-        )
-    except Exception as exc:
-        print(f"[Gemini Images] Falling back to per-slot prompt generation: {exc}")
+    prompts_map = gemini_runner.generate_image_prompts_batch(
+        slots_payload,
+        product_prompt,
+        project_root,
+        config,
+        follow_up_context=image_follow_up_context,
+        debug=debug,
+    )
 
     prompts: list[tuple[str, str]] = []
     for slot in slots:

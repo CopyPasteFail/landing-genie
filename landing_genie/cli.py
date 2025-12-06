@@ -79,6 +79,10 @@ def new(
     os.environ["LANDING_GENIE_PROMPT_LOG_PATH"] = str(prompt_log_path)
     typer.echo(f"Gemini prompts will be logged to {prompt_log_path}")
 
+    if ask_follow_ups is False and ask_image_follow_ups:
+        typer.echo("Skipping image follow-ups because text follow-ups were disabled.")
+        ask_image_follow_ups = False
+
     if ask_follow_ups:
         try:
             questions = suggest_follow_up_questions(product_prompt=prompt, project_root=root, config=config, debug=debug)
@@ -169,9 +173,9 @@ def new(
                 debug=debug,
             )
             if image_prompts:
-                typer.echo("Image prompts generated (not sent to Gemini image model):")
-                for src, prompt_text in image_prompts:
-                    typer.echo(f"- {src}: {prompt_text}")
+                typer.echo("Image prompts generated (not sent to Gemini image model)")
+                # for src, prompt_text in image_prompts:
+                #     typer.echo(f"- {src}: {prompt_text}")
             else:
                 typer.echo("No image placeholders found to generate prompts.")
         except Exception as exc:
