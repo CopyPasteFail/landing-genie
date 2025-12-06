@@ -210,6 +210,12 @@ All configuration is read from `.env` (sample in `.env.example`). Defaults apply
 | `LANDING_GENIE_MAX_FOLLOW_UP_QUESTIONS` | default `20` | Max clarifying questions for text prompts. |
 | `LANDING_GENIE_MAX_IMAGE_FOLLOW_UP_QUESTIONS` | default `20` | Max clarifying questions for image prompts. |
 
+## Security and static analysis
+
+- This project uses `subprocess.run` in `landing_genie/cloudflare_api.py` and `landing_genie/gemini_runner.py` to call trusted CLIs (Wrangler and Gemini). All calls use `shell=False`, pass arguments as a list, and avoid interpolating untrusted user input. Slugs are normalized and validated (only `[a-z0-9-]`) before being used in paths or commands.
+- Bandit (`bandit -q -r landing_genie`) reports low‑severity warnings (`B404`/`B603`) for these `subprocess` usages as a general caution, but there are no medium or high‑severity findings in the package. If you want a noise‑free Bandit run, you can add targeted `# nosec B603` comments beside those lines with a short justification.
+- The local preview server (`landing_genie/preview.py`) binds to `127.0.0.1` only, so the `/__preview/refine` endpoint is not exposed on external interfaces.
+
 1) Move DNS to Cloudflare  
 - Sign up/sign in to Cloudflare and add your domain.  
 - Cloudflare scans existing DNS records; review and confirm (ensure A/AAAA/CNAME/MX/TXT records match your current registrar).  
