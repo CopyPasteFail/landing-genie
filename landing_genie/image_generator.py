@@ -130,9 +130,15 @@ def _resolve_image_prompt_for_slot(
     except Exception as exc:
         print(f"[Gemini Images] Falling back to default prompt for {slot.src}: {exc}")
 
-    return prompt_text or _fallback_image_prompt(
+    prompt_text = prompt_text or _fallback_image_prompt(
         slot, product_prompt, image_follow_up_context=image_follow_up_context
     )
+    if prompt_text:
+        try:
+            gemini_runner._log_image_prompt_result(slot.src, prompt_text)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    return prompt_text
 
 
 class _PartPayload(TypedDict):
@@ -257,17 +263,44 @@ def generate_image_prompts_for_site(
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
 
     slots = _discover_image_slots(index_path)
-    prompts: list[tuple[str, str]] = []
+    if not slots:
+        return []
 
-    for slot in slots:
-        prompt_text = _resolve_image_prompt_for_slot(
-            slot,
+    def _slot_alt(slot: ImageSlot) -> str:
+        alt_clean = slot.alt.strip() if slot.alt else ""
+        if alt_clean:
+            return alt_clean
+        return Path(slot.src).stem.replace("-", " ").replace("_", " ")
+
+    slots_payload = [{"src": slot.src, "alt": _slot_alt(slot)} for slot in slots]
+    prompts_map: dict[str, str] = {}
+
+    try:
+        from . import gemini_runner  # Local import to avoid circular dependency.
+
+        prompts_map = gemini_runner.generate_image_prompts_batch(
+            slots_payload,
             product_prompt,
             project_root,
             config,
-            image_follow_up_context=image_follow_up_context,
+            follow_up_context=image_follow_up_context,
             debug=debug,
         )
+    except Exception as exc:
+        print(f"[Gemini Images] Falling back to per-slot prompt generation: {exc}")
+
+    prompts: list[tuple[str, str]] = []
+    for slot in slots:
+        prompt_text = prompts_map.get(slot.src)
+        if not prompt_text:
+            prompt_text = _resolve_image_prompt_for_slot(
+                slot,
+                product_prompt,
+                project_root,
+                config,
+                image_follow_up_context=image_follow_up_context,
+                debug=debug,
+            )
         prompts.append((slot.src, prompt_text))
 
     return prompts
@@ -295,20 +328,32 @@ def generate_images_for_site(
     if not slots:
         return []
 
+    prompts_list = generate_image_prompts_for_site(
+        slug=slug,
+        product_prompt=product_prompt,
+        project_root=project_root,
+        config=config,
+        image_follow_up_context=image_follow_up_context,
+        debug=debug,
+    )
+    prompts_map = {src: prompt for src, prompt in prompts_list}
+
     generated: list[Path] = []
     for slot in slots:
         target_path = site_dir / slot.src
         if target_path.exists() and not overwrite:
             continue
 
-        prompt_text = _resolve_image_prompt_for_slot(
-            slot,
-            product_prompt,
-            project_root,
-            config,
-            image_follow_up_context=image_follow_up_context,
-            debug=debug,
-        )
+        prompt_text = prompts_map.get(slot.src)
+        if not prompt_text:
+            prompt_text = _resolve_image_prompt_for_slot(
+                slot,
+                product_prompt,
+                project_root,
+                config,
+                image_follow_up_context=image_follow_up_context,
+                debug=debug,
+            )
         image_bytes, usage = _request_image(prompt_text, config.gemini_image_model, api_key)
 
         target_path.parent.mkdir(parents=True, exist_ok=True)

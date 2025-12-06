@@ -244,6 +244,51 @@ def _log_image_prompt_result(slot_src: str, prompt_text: str) -> None:
         print(f"[Gemini CLI debug] Failed to log image prompt result: {exc}")
 
 
+def _parse_image_prompt_batch_response(stdout: str, *, debug: bool = False) -> dict[str, str]:
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+
+    def _debug(msg: str) -> None:
+        if debug_enabled:
+            print(msg)
+
+    truncated = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
+
+    def _extract_from_text(text: str) -> dict[str, str]:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict):
+            prompts = data.get("prompts")
+            results: dict[str, str] = {}
+            if isinstance(prompts, list):
+                for item in prompts:
+                    if not isinstance(item, dict):
+                        continue
+                    src = item.get("src")
+                    prompt = item.get("prompt") or item.get("image_prompt") or item.get("imagePrompt")
+                    if isinstance(src, str) and isinstance(prompt, str) and src.strip() and prompt.strip():
+                        results[src.strip()] = prompt.strip()
+            if results:
+                return results
+            response_field = data.get("response")
+            if isinstance(response_field, str):
+                nested = _extract_from_text(response_field)
+                if nested:
+                    return nested
+        stripped = _strip_code_fences(text)
+        if stripped != text:
+            nested = _extract_from_text(stripped)
+            if nested:
+                return nested
+        return {}
+
+    results = _extract_from_text(stdout)
+    if not results:
+        _debug(f"[Gemini CLI debug] Could not parse batch image prompts from stdout:\n{truncated}")
+    return results
+
+
 def _extract_questions_from_obj(obj: Any) -> list[str]:
     questions: list[str] = []
     if not isinstance(obj, dict):
@@ -553,6 +598,55 @@ def generate_image_prompt(
     if prompt_result:
         _log_image_prompt_result(slot_src, prompt_result)
     return prompt_result
+
+
+def generate_image_prompts_batch(
+    slots: list[dict[str, str]],
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    follow_up_context: Optional[str] = None,
+    debug: bool = False,
+) -> dict[str, str]:
+    """
+    Ask Gemini CLI once to craft prompts for all image slots.
+    Expected stdout: {"prompts":[{"src":"assets/hero.png","prompt":"..."}]}
+    Returns mapping of src -> prompt text.
+    """
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "image_prompts_batch.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Batch image prompt template not found at {template_path}")
+
+    clarifications = (follow_up_context or "None provided.").strip() or "None provided."
+    slot_lines = "\n".join(
+        f"- src: {slot.get('src','').strip()}\n  alt: {(slot.get('alt') or '').strip()}"
+        for slot in slots
+        if slot.get("src")
+    )
+
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ image_follow_up_context }}", clarifications)
+        .replace("{{ slot_list }}", slot_lines)
+    )
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    prompts_map = _parse_image_prompt_batch_response(stdout, debug=debug)
+    for src, prompt in prompts_map.items():
+        _log_image_prompt_result(src, prompt)
+    return prompts_map
 
 
 def _run_gemini(

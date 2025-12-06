@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
 
 from types import SimpleNamespace
+from pathlib import Path
 
 from landing_genie import cli, gemini_runner
 from landing_genie.config import Config
@@ -279,3 +280,47 @@ def test_image_prompt_generation_logs_result(monkeypatch, tmp_path) -> None:
     assert "image-prompt result" in content
     assert "assets/hero.png" in content
     assert "generated image prompt" in content
+
+
+def test_batch_image_prompts(monkeypatch, tmp_path) -> None:
+    dummy_config = Config(
+        root_domain="example.com",
+        cf_account_id="acc",
+        cf_api_token="token",
+        gemini_code_model="gemini-2.5-pro",
+        gemini_image_model="gemini-2.5-flash-image",
+        gemini_cli_command="gemini",
+        gemini_api_key=None,
+        gemini_telemetry_otlp_endpoint=None,
+        gemini_image_cost_per_1k_tokens=None,
+    )
+
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    (prompts_dir / "image_prompts_batch.md").write_text(
+        "Slots:\n{{ slot_list }}\nProduct: {{ product_prompt }}\nFollow-ups: {{ image_follow_up_context }}",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("LANDING_GENIE_PROMPT_LOG_PATH", str(tmp_path / ".log" / "gemini_prompts.log"))
+
+    def _fake_run(prompt_text, model, config, **kwargs):
+        return '{"prompts":[{"src":"assets/hero.png","prompt":"p1"},{"src":"assets/feature.png","prompt":"p2"}]}'
+
+    monkeypatch.setattr(gemini_runner, "_run_gemini", _fake_run)
+
+    result = gemini_runner.generate_image_prompts_batch(
+        [
+            {"src": "assets/hero.png", "alt": "Hero"},
+            {"src": "assets/feature.png", "alt": "Feature"},
+        ],
+        product_prompt="product",
+        project_root=tmp_path,
+        config=dummy_config,
+        follow_up_context="ctx",
+    )
+
+    assert result == {"assets/hero.png": "p1", "assets/feature.png": "p2"}
+    content = (tmp_path / ".log" / "gemini_prompts.log").read_text(encoding="utf-8")
+    assert "image-prompt result" in content
+    assert "assets/hero.png" in content and "p1" in content
