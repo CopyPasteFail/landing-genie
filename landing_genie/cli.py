@@ -21,6 +21,7 @@ from .image_generator import (
 )
 from .preview import serve_local
 from .cloudflare_api import deploy_to_pages, ensure_custom_domain
+from .site_paths import normalize_slug
 
 app = typer.Typer(help="landing-genie - generate and deploy AI landing pages")
 
@@ -58,7 +59,11 @@ def new(
     root = _project_root()
 
     slug_input = suggested_subdomain if suggested_subdomain is not None else typer.prompt("Enter desired subdomain slug (no spaces)")
-    slug = slug_input.strip().lower().replace(" ", "-")
+    try:
+        slug = normalize_slug(slug_input)
+    except ValueError as exc:
+        typer.echo(f"Invalid slug: {exc}")
+        raise typer.Exit(code=1)
 
     prompt_input = prompt if prompt is not None else typer.prompt("Enter a product description and target audience")
     prompt_clean = prompt_input.strip()
@@ -221,6 +226,12 @@ def new(
 @app.command()
 def deploy(slug: str = typer.Argument(..., help="Slug under sites/ to deploy")) -> None:
     """Deploy an existing landing to Cloudflare Pages."""
+    try:
+        slug = normalize_slug(slug)
+    except ValueError as exc:
+        typer.echo(f"Invalid slug: {exc}")
+        raise typer.Exit(code=1)
+
     config = Config.load()
     root = _project_root()
     project_name = deploy_to_pages(slug=slug, project_root=root, config=config)
@@ -235,6 +246,12 @@ def images(
     overwrite: bool = typer.Option(False, "--overwrite/--keep-existing", help="Regenerate even if image files exist"),
 ) -> None:
     """Generate images for an existing landing using Gemini's image model."""
+    try:
+        slug = normalize_slug(slug)
+    except ValueError as exc:
+        typer.echo(f"Invalid slug: {exc}")
+        raise typer.Exit(code=1)
+
     config = Config.load()
     root = _project_root()
     api_key_present = config.gemini_api_key or os.getenv("GEMINI_API_KEY")

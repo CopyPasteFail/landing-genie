@@ -8,6 +8,7 @@ from typing import Any, Dict, List, cast
 import requests
 
 from .config import Config
+from .site_paths import normalize_site_dir
 
 API_BASE = "https://api.cloudflare.com/client/v4"
 PRODUCTION_BRANCH = "main"
@@ -141,7 +142,7 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
 
     Returns the Pages project name (used for custom-domain wiring).
     """
-    site_dir = project_root / "sites" / slug
+    site_dir = normalize_site_dir(slug, project_root)
     if not site_dir.is_dir():
         raise CloudflareAPIError(f"Site directory does not exist: {site_dir}")
 

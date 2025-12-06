@@ -794,8 +794,9 @@ def generate_site(
     template_path = prompts_dir / "runtime_generation_prompt.md"
     if not template_path.exists():
         raise FileNotFoundError(f"Prompt template not found at {template_path}")
+    from .site_paths import normalize_site_dir  # Local import to avoid cycles.
 
-    site_dir = project_root / "sites" / slug
+    site_dir = normalize_site_dir(slug, project_root)
     site_dir.mkdir(parents=True, exist_ok=True)
 
     template = template_path.read_text(encoding="utf-8")
@@ -824,7 +825,6 @@ def generate_site(
     )
 
     _run_gemini(text, config.gemini_code_model, config, cwd=site_dir, debug=debug)
-    normalize_site_dir(slug, project_root)
 
 
 def refine_site(slug: str, feedback: str, project_root: Path, config: Config, *, debug: bool = False) -> None:

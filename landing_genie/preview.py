@@ -410,7 +410,9 @@ def serve_local(
             self.end_headers()
             self.wfile.write(data)
 
-    httpd = ReusableTCPServer(("", port), Handler)
+    # Bind explicitly to localhost so the preview server is not exposed on
+    # all network interfaces.
+    httpd = ReusableTCPServer(("127.0.0.1", port), Handler)
     bound_port = httpd.server_address[1]
 
     def _run() -> None:
