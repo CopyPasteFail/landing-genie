@@ -21,16 +21,31 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 - Logging in with `gemini login` keeps text prompts on the Google AI Studio free tier. Rate limits on the free tier apply (see https://ai.google.dev/gemini-api/docs/rate-limits under those models).
 - Leave `GEMINI_ALLOW_CLI_API_KEY=0` or unset to avoid accidentally switching the CLI onto your paid API key; use the API key only for image calls where billing is required.
 
+| Limit Type              | Personal / Free User | Pro / Enterprise User |
+|-------------------------|----------------------|------------------------|
+| Requests per minute (RPM) | 120                  | 120                    |
+| Requests per day (RPD)    | 1,000                | 1,500        |
+| Context window            | 1,000,000 tokens     | 1,000,000 tokens       |
+
+> Updated info can be found at: https://docs.cloud.google.com/gemini/docs/quotas
+
+
+**Note**
+- When using the CLI in Agent Mode, a single user prompt may trigger multiple background model requests, all of which count toward these limits.
+
+
 ### Gemini free-tier rate limits (API)
 
 - Rate limits are enforced per project (not per API key) and are checked independently across RPM (requests per minute), TPM ((input) tokens per minute), and RPD (requests per day). Exceeding any dimension triggers a rate limit error; RPD resets at midnight Pacific.
-- Limits vary by model and some limits are model-specific. Common text-out free-tier limits:
+- Limits vary by model and some limits are model-specific.
 
-| Model | RPM | TPM (input) | RPD |
-| --- | --- | --- | --- |
-| Gemini 2.5 Pro | 2 | 125,000 | 50 |
-| Gemini 2.5 Flash | 10 | 250,000 | 250 |
-| Gemini 2.5 Flash-Lite | 15 | 250,000 | 1,000 |
+| Model                | Requests per Minute (RPM) | Requests per Day (RPD) | Tokens per Minute (TPM) |
+|----------------------|---------------------------|-------------------------|--------------------------|
+| Gemini 2.5 Flash     | 5                         | 20                      | 250,000                  |
+| Gemini 2.5 Flash-Lite| 10                        | 20                      | 250,000                  |
+| Gemini 3 Flash       | 5                         | 20                      | 250,000                  |
+
+> You can check your current per project limits at: https://aistudio.google.com/usage
 
 ### Gemini image generation requires billing
 
@@ -340,11 +355,11 @@ Model prices per 1M output tokens:
 
 Effective cost per image:
 - **Gemini 3 Pro**
-  - 1K/2K image ≈ $0.13–$0.14
-  - 4K image ≈ $0.24–$0.48
+  - 1K/2K image ≈ $0.13–0.14
+  - 4K image ≈ $0.24–0.48
 - **Gemini Flash**
   - 1K/2K image ≈ $0.05
-  - 4K image ≈ $0.12–$0.16
+  - 4K image ≈ $0.12–0.16
 
 Flash is roughly **3 times cheaper** than Pro.
 
