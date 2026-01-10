@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
+import subprocess  # nosec B404
 import threading
 import time
 from pathlib import Path
@@ -906,6 +906,7 @@ def _run_gemini(
     progress_thread.start()
 
     try:
+        # Command uses configured CLI + generated prompt; no user-supplied shell expansion.
         result = subprocess.run(
             cmd,
             cwd=str(cwd) if cwd is not None else None,

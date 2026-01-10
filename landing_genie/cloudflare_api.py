@@ -175,7 +175,8 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
         PRODUCTION_BRANCH,
     ]
 
-    proc = subprocess.run(
+    # Command is fully constructed from trusted inputs (slug/domain are sanitized).
+    proc = subprocess.run(  # nosec B603
         cmd,
         env=env,
         capture_output=True,
