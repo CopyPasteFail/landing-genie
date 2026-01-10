@@ -21,8 +21,8 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 - Logging in with `gemini login` keeps text prompts on the Google AI Studio free tier. Rate limits on the free tier apply (see https://ai.google.dev/gemini-api/docs/rate-limits under those models).
 - Leave `GEMINI_ALLOW_CLI_API_KEY=0` or unset to avoid accidentally switching the CLI onto your paid API key; use the API key only for image calls where billing is required.
 
-| Limit Type              | Personal / Free User | Pro / Enterprise User |
-|-------------------------|----------------------|------------------------|
+| Limit Type                | Personal / Free User | Pro / Enterprise User |
+|---------------------------|----------------------|------------------------|
 | Requests per minute (RPM) | 120                  | 120                    |
 | Requests per day (RPD)    | 1,000                | 1,500        |
 | Context window            | 1,000,000 tokens     | 1,000,000 tokens       |
@@ -103,7 +103,7 @@ nvm use 20.19.4
 Direct Upload via Wrangler
 
 ```bash
-npm install -g wrangler@4.53.0
+npm install -g wrangler@4.56.0
 ```
 
 
