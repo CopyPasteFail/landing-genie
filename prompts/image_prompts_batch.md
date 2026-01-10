@@ -2,6 +2,7 @@ You generate detailed image prompts for a landing page.
 
 - Product description: {{ product_prompt }}
 - Follow-up context: {{ image_follow_up_context }}
+- Visual bible (JSON, use verbatim): {{ image_visual_bible }}
 - Image slots (src, alt/title/hint):
 {{ slot_list }}
 

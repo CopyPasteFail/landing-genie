@@ -481,6 +481,40 @@ def _parse_image_prompt_response(stdout: str, *, debug: bool = False) -> Optiona
     return None
 
 
+def _parse_image_visual_bible_response(stdout: str, *, debug: bool = False) -> Optional[str]:
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+
+    def _debug(msg: str) -> None:
+        if debug_enabled:
+            print(msg)
+
+    truncated = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
+
+    def _extract_from_text(text: str) -> Optional[str]:
+        stripped = _strip_code_fences(text)
+        try:
+            data_obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            data_obj = None
+        if isinstance(data_obj, dict):
+            response_field = data_obj.get("response")
+            if isinstance(response_field, str):
+                nested = _extract_from_text(response_field)
+                if nested:
+                    return nested
+            return stripped
+        if isinstance(data_obj, str):
+            return data_obj.strip() if data_obj.strip() else None
+        return None
+
+    bible = _extract_from_text(stdout)
+    if bible:
+        return bible
+
+    _debug(f"[Gemini CLI debug] Could not parse image visual bible from stdout:\n{truncated}")
+    return None
+
+
 def _load_prompt_snippets(project_root: Path) -> dict[str, str]:
     """
     Load optional prompt snippets from prompts/snippets.md, split by `## name` headers.
@@ -579,6 +613,47 @@ def suggest_image_follow_up_questions(
     return _dedupe_questions(parsed_questions, max_questions)
 
 
+def generate_image_visual_bible(
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    follow_up_context: Optional[str] = None,
+    debug: bool = False,
+) -> str:
+    """Ask Gemini CLI to craft a structured visual bible for consistent imagery."""
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "image_visual_bible.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Image visual bible template not found at {template_path}")
+
+    clarifications = (follow_up_context or "None provided.").strip() or "None provided."
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ image_follow_up_context }}", clarifications)
+    )
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    bible_result = _parse_image_visual_bible_response(stdout, debug=debug)
+    if not bible_result:
+        truncated = stdout if len(stdout) <= 1000 else stdout[:1000] + "...[truncated]"
+        raise RuntimeError(
+            "Gemini visual bible response could not be parsed. "
+            f"Stdout sample:\n{truncated}"
+        )
+    return bible_result
+
+
 def generate_image_prompt(
     slot_src: str,
     slot_alt: str,
@@ -587,6 +662,7 @@ def generate_image_prompt(
     config: Config,
     *,
     follow_up_context: Optional[str] = None,
+    visual_bible: Optional[str] = None,
     debug: bool = False,
 ) -> str:
     """Ask Gemini CLI to craft a rich prompt for a specific image slot."""
@@ -596,6 +672,7 @@ def generate_image_prompt(
         raise FileNotFoundError(f"Image prompt template not found at {template_path}")
 
     clarifications = (follow_up_context or "None provided.").strip() or "None provided."
+    bible_text = (visual_bible or "None provided.").strip() or "None provided."
     slot_alt_clean = slot_alt.strip() if slot_alt else ""
     if not slot_alt_clean:
         # Derive a human-friendly hint from the filename if no alt text exists.
@@ -608,6 +685,7 @@ def generate_image_prompt(
         .replace("{{ slot_src }}", slot_src)
         .replace("{{ slot_alt }}", slot_alt_clean or "image for the landing page")
         .replace("{{ image_follow_up_context }}", clarifications)
+        .replace("{{ image_visual_bible }}", bible_text)
     )
 
     stdout = _run_gemini(
@@ -636,6 +714,7 @@ def generate_image_prompts_batch(
     config: Config,
     *,
     follow_up_context: Optional[str] = None,
+    visual_bible: Optional[str] = None,
     debug: bool = False,
 ) -> dict[str, str]:
     """
@@ -649,6 +728,7 @@ def generate_image_prompts_batch(
         raise FileNotFoundError(f"Batch image prompt template not found at {template_path}")
 
     clarifications = (follow_up_context or "None provided.").strip() or "None provided."
+    bible_text = (visual_bible or "None provided.").strip() or "None provided."
     slot_lines = "\n".join(
         f"- src: {slot.get('src','').strip()}\n  alt: {(slot.get('alt') or '').strip()}"
         for slot in slots
@@ -660,6 +740,7 @@ def generate_image_prompts_batch(
         template
         .replace("{{ product_prompt }}", product_prompt)
         .replace("{{ image_follow_up_context }}", clarifications)
+        .replace("{{ image_visual_bible }}", bible_text)
         .replace("{{ slot_list }}", slot_lines)
     )
 

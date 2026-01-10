@@ -59,7 +59,8 @@ def test_generate_image_prompt_uses_template(tmp_path, monkeypatch) -> None:
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "image_prompt.md").write_text(
-        "Prompt for {{ slot_src }} {{ slot_alt }} {{ product_prompt }} {{ image_follow_up_context }}",
+        "Prompt for {{ slot_src }} {{ slot_alt }} {{ product_prompt }} "
+        "{{ image_follow_up_context }} {{ image_visual_bible }}",
         encoding="utf-8",
     )
 
@@ -88,6 +89,7 @@ def test_generate_image_prompt_uses_template(tmp_path, monkeypatch) -> None:
         project_root=tmp_path,
         config=config,
         follow_up_context="- Prefer bright colors",
+        visual_bible='{"color_palette":"teal","material":"glass"}',
         debug=False,
     )
 
@@ -98,3 +100,44 @@ def test_generate_image_prompt_uses_template(tmp_path, monkeypatch) -> None:
     assert "Hero banner showing the product" in sent_prompt
     assert "AI tutor" in sent_prompt
     assert "Prefer bright colors" in sent_prompt
+    assert '"color_palette":"teal"' in sent_prompt
+
+
+def test_generate_image_visual_bible_uses_template(tmp_path, monkeypatch) -> None:
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    (prompts_dir / "image_visual_bible.md").write_text(
+        "Bible for {{ product_prompt }} with {{ image_follow_up_context }}", encoding="utf-8"
+    )
+
+    call_log: list[str] = []
+
+    def fake_run_gemini(
+        prompt_text: str,
+        model: str,
+        config: Config,
+        cwd: Optional[Path] = None,
+        *,
+        output_format: str = "json",
+        capture_output: bool = False,
+        debug: bool = False,
+    ) -> str:
+        call_log.append(prompt_text)
+        return '{"color_palette":"navy","primary_material":"aluminum"}'
+
+    monkeypatch.setattr(gemini_runner, "_run_gemini", fake_run_gemini)
+
+    config = _test_config()
+    bible = gemini_runner.generate_image_visual_bible(
+        product_prompt="Smart bottle",
+        project_root=tmp_path,
+        config=config,
+        follow_up_context="- Matte finish",
+        debug=False,
+    )
+
+    assert bible == '{"color_palette":"navy","primary_material":"aluminum"}'
+    assert call_log, "generate_image_visual_bible did not invoke _run_gemini"
+    sent_prompt = call_log[0]
+    assert "Smart bottle" in sent_prompt
+    assert "Matte finish" in sent_prompt

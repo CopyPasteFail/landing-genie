@@ -255,7 +255,8 @@ def test_image_prompt_generation_logs_result(monkeypatch, tmp_path) -> None:
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "image_prompt.md").write_text(
-        "Image prompt {{ product_prompt }} {{ slot_src }} {{ slot_alt }} {{ image_follow_up_context }}",
+        "Image prompt {{ product_prompt }} {{ slot_src }} {{ slot_alt }} "
+        "{{ image_follow_up_context }} {{ image_visual_bible }}",
         encoding="utf-8",
     )
 
@@ -298,7 +299,8 @@ def test_batch_image_prompts(monkeypatch, tmp_path) -> None:
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "image_prompts_batch.md").write_text(
-        "Slots:\n{{ slot_list }}\nProduct: {{ product_prompt }}\nFollow-ups: {{ image_follow_up_context }}",
+        "Slots:\n{{ slot_list }}\nProduct: {{ product_prompt }}\n"
+        "Follow-ups: {{ image_follow_up_context }}\nBible: {{ image_visual_bible }}",
         encoding="utf-8",
     )
 
