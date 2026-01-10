@@ -579,10 +579,59 @@ def suggest_image_follow_up_questions(
     return _dedupe_questions(parsed_questions, max_questions)
 
 
+def generate_image_product_identity(
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    follow_up_context: Optional[str] = None,
+    debug: bool = False,
+) -> str:
+    """Ask Gemini CLI to summarize a consistent product identity for all images."""
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "image_product_identity.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Image product identity template not found at {template_path}")
+
+    clarifications = (follow_up_context or "None provided.").strip() or "None provided."
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ image_follow_up_context }}", clarifications)
+    )
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    cleaned = _strip_code_fences(stdout)
+    parsed: dict[str, Any] | None = None
+    for obj in _iter_json_objects(cleaned):
+        parsed = obj
+        break
+    if not parsed:
+        truncated = stdout if len(stdout) <= 1000 else stdout[:1000] + "...[truncated]"
+        raise RuntimeError(
+            "Gemini product identity response could not be parsed; "
+            f"stdout sample:\n{truncated}"
+        )
+    identity = parsed.get("identity") if isinstance(parsed, dict) else None
+    if not isinstance(identity, str) or not identity.strip():
+        raise RuntimeError("Gemini product identity response missing 'identity' field.")
+    return identity.strip()
+
+
 def generate_image_prompt(
     slot_src: str,
     slot_alt: str,
     product_prompt: str,
+    product_identity: str | None,
     project_root: Path,
     config: Config,
     *,
@@ -605,6 +654,7 @@ def generate_image_prompt(
     prompt_text = (
         template
         .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ product_identity }}", (product_identity or "None provided.").strip() or "None provided.")
         .replace("{{ slot_src }}", slot_src)
         .replace("{{ slot_alt }}", slot_alt_clean or "image for the landing page")
         .replace("{{ image_follow_up_context }}", clarifications)
@@ -632,6 +682,7 @@ def generate_image_prompt(
 def generate_image_prompts_batch(
     slots: list[dict[str, str]],
     product_prompt: str,
+    product_identity: str | None,
     project_root: Path,
     config: Config,
     *,
@@ -659,6 +710,7 @@ def generate_image_prompts_batch(
     prompt_text = (
         template
         .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ product_identity }}", (product_identity or "None provided.").strip() or "None provided.")
         .replace("{{ image_follow_up_context }}", clarifications)
         .replace("{{ slot_list }}", slot_lines)
     )

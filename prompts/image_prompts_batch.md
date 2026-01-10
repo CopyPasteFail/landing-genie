@@ -1,6 +1,8 @@
 You generate detailed image prompts for a landing page.
 
 - Product description: {{ product_prompt }}
+- Product identity (shared across all images):
+{{ product_identity }}
 - Follow-up context: {{ image_follow_up_context }}
 - Image slots (src, alt/title/hint):
 {{ slot_list }}
