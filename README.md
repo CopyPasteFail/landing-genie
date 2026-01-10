@@ -103,7 +103,7 @@ nvm use 20.19.4
 Direct Upload via Wrangler
 
 ```bash
-npm install -g wrangler@4.56.0
+npm install -g wrangler@4.59.2
 ```
 
 
