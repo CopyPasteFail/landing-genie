@@ -1,3 +1,5 @@
+"""Path normalization helpers for landing sites."""
+
 from __future__ import annotations
 
 import re

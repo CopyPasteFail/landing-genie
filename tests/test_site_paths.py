@@ -1,9 +1,12 @@
+"""Tests for site path normalization."""
+
 from pathlib import Path
 
 from landing_genie.site_paths import normalize_site_dir
 
 
 def test_normalize_site_dir_flattens_nested(tmp_path: Path) -> None:
+    """Ensure nested site directories are flattened to sites/<slug>."""
     nested = tmp_path / "sites" / "sluggy" / "sites" / "sluggy"
     nested.mkdir(parents=True)
     (nested / "index.html").write_text("ok", encoding="utf-8")

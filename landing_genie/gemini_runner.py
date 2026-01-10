@@ -1,3 +1,5 @@
+"""Run Gemini CLI workflows and parse responses."""
+
 from __future__ import annotations
 import json
 import os
@@ -13,6 +15,7 @@ from .site_paths import normalize_site_dir
 
 
 def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
+    """Read an int env var with a minimum fallback."""
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
@@ -66,6 +69,7 @@ def _extract_usage(stdout: str, model: str) -> tuple[Optional[int], Optional[int
     found_total: Optional[int] = None
 
     def _int_or_none(value: Any) -> Optional[int]:
+        """Return the value if it is an int."""
         return value if isinstance(value, int) else None
 
     for obj in _iter_json_objects(stdout):
@@ -117,6 +121,7 @@ def _extract_usage(stdout: str, model: str) -> tuple[Optional[int], Optional[int
 
     # Regex fallback for non-JSON telemetry output (single-quoted or inspected dicts).
     def _m(pattern: str) -> Optional[int]:
+        """Return the first regex group as an int if present."""
         match = re.search(pattern, stdout, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
         return int(match.group(1)) if match else None
 
@@ -143,6 +148,7 @@ def _strip_code_fences(text: str) -> str:
 
 
 def _prompt_log_max_bytes() -> int:
+    """Resolve the prompt log size cap in bytes."""
     raw_mb = os.getenv(PROMPT_LOG_MAX_MB_ENV_VAR)
     if raw_mb:
         try:
@@ -165,6 +171,7 @@ def _prompt_log_max_bytes() -> int:
 
 
 def _prompt_log_path() -> Optional[Path]:
+    """Resolve the path to the prompt log file if enabled."""
     env_raw = os.getenv(PROMPT_LOG_ENV_VAR)
     raw = env_raw if env_raw is not None else DEFAULT_PROMPT_LOG_PATH
     raw = raw.strip()
@@ -177,6 +184,7 @@ def _prompt_log_path() -> Optional[Path]:
 
 
 def _enforce_log_cap(log_path: Path, max_bytes: int) -> None:
+    """Trim the prompt log file to a maximum size."""
     try:
         size = log_path.stat().st_size
     except OSError:
@@ -202,6 +210,7 @@ def _enforce_log_cap(log_path: Path, max_bytes: int) -> None:
 
 
 def _append_prompt_log(entry: str) -> None:
+    """Append a text entry to the prompt log."""
     log_path = _prompt_log_path()
     if not log_path:
         return
@@ -235,6 +244,7 @@ def _log_prompt(prompt_text: str, model: str) -> None:
 
 
 def _log_image_prompt_result(slot_src: str, prompt_text: str) -> None:
+    """Log the generated image prompt to the prompt log."""
     log_path = _prompt_log_path()
     if not log_path or not prompt_text:
         return
@@ -252,15 +262,18 @@ def _log_image_prompt_result(slot_src: str, prompt_text: str) -> None:
 
 
 def _parse_image_prompt_batch_response(stdout: str, *, debug: bool = False) -> dict[str, str]:
+    """Parse a batch image prompt response into a src->prompt mapping."""
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
 
     def _debug(msg: str) -> None:
+        """Log debug output when enabled."""
         if debug_enabled:
             print(msg)
 
     truncated = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
 
     def _extract_from_text(text: str) -> dict[str, str]:
+        """Extract prompt mappings from nested JSON/text content."""
         try:
             data_obj = json.loads(text)
         except json.JSONDecodeError:
@@ -306,7 +319,99 @@ def _parse_image_prompt_batch_response(stdout: str, *, debug: bool = False) -> d
     return results
 
 
+def _parse_product_slot_response(
+    stdout: str,
+    *,
+    debug: bool = False,
+) -> tuple[str, list[str]]:
+    """Parse product slot selection response from Gemini CLI."""
+    debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
+
+    def _debug(msg: str) -> None:
+        """Log debug output when enabled."""
+        if debug_enabled:
+            print(msg)
+
+    truncated = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
+
+    def _normalize_response(data: dict[str, Any]) -> tuple[str, list[str]] | None:
+        """Normalize the slot response into (canonical_src, slots)."""
+        if "canonical_src" not in data or "product_slots" not in data:
+            return None
+        canonical_raw = data.get("canonical_src")
+        slots_raw = data.get("product_slots")
+        if not isinstance(canonical_raw, str):
+            return None
+        if not isinstance(slots_raw, list):
+            return None
+        slots_raw_list = cast(list[object], slots_raw)
+        if any(not isinstance(item, str) for item in slots_raw_list):
+            return None
+        canonical_src = canonical_raw.strip()
+        product_slots = [item.strip() for item in cast(list[str], slots_raw_list)]
+        if any(not item for item in product_slots):
+            return None
+        return canonical_src, product_slots
+
+    def _extract_from_text(text: str) -> tuple[str, list[str]] | None:
+        """Extract a slot response from nested JSON/text."""
+        try:
+            data_obj = json.loads(text)
+        except json.JSONDecodeError:
+            data_obj = None
+        if isinstance(data_obj, dict):
+            data_dict = cast(dict[str, Any], data_obj)
+            normalized = _normalize_response(data_dict)
+            if normalized is not None:
+                return normalized
+            response_field = data_dict.get("response")
+            if isinstance(response_field, str):
+                nested = _extract_from_text(response_field)
+                if nested is not None:
+                    return nested
+        stripped = _strip_code_fences(text)
+        if stripped != text:
+            nested = _extract_from_text(stripped)
+            if nested is not None:
+                return nested
+        return None
+
+    parsed = _extract_from_text(stdout)
+    if parsed is None:
+        _debug(f"[Gemini CLI debug] Could not parse product slot response from stdout:\n{truncated}")
+        return "", []
+    return parsed
+
+
+def _validate_product_slot_selection(
+    canonical_src: str,
+    product_slots: list[str],
+    slots: list[dict[str, str]],
+) -> tuple[str, list[str]]:
+    """Validate canonical/product slots against known slot order."""
+    slot_order = [slot.get("src", "").strip() for slot in slots if slot.get("src")]
+    slot_positions = {src: idx for idx, src in enumerate(slot_order)}
+
+    last_index = -1
+    for src in product_slots:
+        idx = slot_positions.get(src)
+        if idx is None:
+            return "", []
+        if idx <= last_index:
+            return "", []
+        last_index = idx
+
+    if product_slots:
+        if canonical_src != product_slots[0]:
+            return "", []
+    elif canonical_src != "":
+        return "", []
+
+    return canonical_src, product_slots
+
+
 def _extract_questions_from_obj(obj: Mapping[str, Any]) -> list[str]:
+    """Extract a questions list from a JSON object."""
     questions: list[str] = []
     raw = obj.get("questions")
     if isinstance(raw, list):
@@ -319,6 +424,7 @@ def _extract_questions_from_obj(obj: Mapping[str, Any]) -> list[str]:
 
 
 def _parse_questions_from_text(text: str) -> list[str]:
+    """Parse questions from either JSON or plain text."""
     questions: list[str] = []
 
     try:
@@ -346,9 +452,11 @@ def _parse_questions_from_text(text: str) -> list[str]:
 
 
 def _parse_follow_up_questions(stdout: str, *, debug: bool = False) -> list[str]:
+    """Parse follow-up questions from Gemini CLI output."""
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
 
     def _debug(msg: str) -> None:
+        """Log debug output when enabled."""
         if debug_enabled:
             print(msg)
 
@@ -407,10 +515,12 @@ def _parse_follow_up_questions(stdout: str, *, debug: bool = False) -> list[str]
 
 
 def _dedupe_questions(questions: list[str], max_questions: int) -> list[str]:
+    """Deduplicate and filter questions to a maximum count."""
     deduped: list[str] = []
     seen: set[str] = set()
 
     def _keep(question: str) -> Optional[str]:
+        """Return a cleaned question or None if it should be discarded."""
         cleaned = question.strip()
         if not cleaned:
             return None
@@ -438,15 +548,18 @@ def _dedupe_questions(questions: list[str], max_questions: int) -> list[str]:
 
 
 def _parse_image_prompt_response(stdout: str, *, debug: bool = False) -> Optional[str]:
+    """Parse a single image prompt response from Gemini CLI."""
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
 
     def _debug(msg: str) -> None:
+        """Log debug output when enabled."""
         if debug_enabled:
             print(msg)
 
     truncated = stdout if len(stdout) <= 4000 else stdout[:4000] + "...[truncated]"
 
     def _extract_from_text(text: str) -> Optional[str]:
+        """Extract a prompt from nested JSON/text."""
         try:
             data_obj = json.loads(text)
         except json.JSONDecodeError:
@@ -684,6 +797,55 @@ def generate_image_prompts_batch(
     return prompts_map
 
 
+def select_product_slots(
+    slots: list[dict[str, str]],
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    *,
+    debug: bool = False,
+) -> tuple[str, list[str]]:
+    """
+    Ask Gemini CLI to decide which slots should include the product image.
+    Returns (canonical_src, product_slots) with canonical_src set to "" for empty selection.
+    """
+    prompts_dir = project_root / "prompts"
+    template_path = prompts_dir / "image_product_slots_prompt.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Product slots prompt template not found at {template_path}")
+
+    slot_lines = "\n".join(
+        "\n".join(
+            [
+                f"- src: {slot.get('src','').strip()}",
+                f"  alt: {(slot.get('alt') or '').strip()}",
+                f"  prompt: {(slot.get('prompt') or '').strip()}",
+            ]
+        )
+        for slot in slots
+        if slot.get("src")
+    )
+
+    template = template_path.read_text(encoding="utf-8")
+    prompt_text = (
+        template
+        .replace("{{ product_prompt }}", product_prompt)
+        .replace("{{ slot_list }}", slot_lines)
+    )
+
+    stdout = _run_gemini(
+        prompt_text,
+        config.gemini_code_model,
+        config,
+        output_format="json",
+        capture_output=True,
+        debug=debug,
+    ) or ""
+
+    canonical_src, product_slots = _parse_product_slot_response(stdout, debug=debug)
+    return _validate_product_slot_selection(canonical_src, product_slots, slots)
+
+
 def _run_gemini(
     prompt_text: str,
     model: str,
@@ -694,6 +856,7 @@ def _run_gemini(
     capture_output: bool = False,
     debug: bool = False,
 ) -> Optional[str]:
+    """Invoke the Gemini CLI with the provided prompt."""
     debug_enabled = debug or bool(os.getenv("LANDING_GENIE_DEBUG"))
     _log_prompt(prompt_text, model)
     if debug_enabled:
@@ -726,6 +889,7 @@ def _run_gemini(
     last_msg_len = 0
 
     def _print_status(status: str, elapsed: float) -> None:
+        """Print a single-line status update."""
         nonlocal last_msg_len
         line = f"[Gemini CLI] {status} {elapsed:.1f} s"
         padding = max(0, last_msg_len - len(line))
@@ -733,6 +897,7 @@ def _run_gemini(
         last_msg_len = len(line)
 
     def _tick() -> None:
+        """Update status line until the command completes."""
         while not stop_event.wait(0.2):
             _print_status("Running...", time.monotonic() - start_time)
 
@@ -790,6 +955,7 @@ def generate_site(
     include_follow_up_context: bool = True,
     debug: bool = False,
 ) -> None:
+    """Generate a landing page site using Gemini CLI."""
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "runtime_generation_prompt.md"
     if not template_path.exists():
@@ -828,6 +994,7 @@ def generate_site(
 
 
 def refine_site(slug: str, feedback: str, project_root: Path, config: Config, *, debug: bool = False) -> None:
+    """Refine an existing landing page using Gemini CLI."""
     prompts_dir = project_root / "prompts"
     template_path = prompts_dir / "refine_landing_prompt.md"
     if not template_path.exists():

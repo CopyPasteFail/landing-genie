@@ -1,6 +1,9 @@
+"""Image generation and asset utilities."""
+
 from __future__ import annotations
 
 import base64
+import json
 import hashlib
 import importlib.resources as resources
 import os
@@ -21,16 +24,20 @@ _API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:gene
 
 @dataclass
 class ImageSlot:
+    """Image slot metadata extracted from site HTML."""
     src: str
     alt: str
 
 
 class _ImgParser(HTMLParser):
+    """HTML parser that collects image slots."""
     def __init__(self) -> None:
+        """Initialize parser state."""
         super().__init__()
         self.slots: list[ImageSlot] = []
 
     def handle_starttag(self, tag: str, attrs: Iterable[tuple[str, str | None]]) -> None:
+        """Collect asset-backed img tags."""
         if tag != "img":
             return
         attr_dict = dict(attrs)
@@ -42,6 +49,7 @@ class _ImgParser(HTMLParser):
 
 
 def _discover_image_slots(index_path: Path) -> list[ImageSlot]:
+    """Parse an index file and return unique image slots."""
     parser = _ImgParser()
     parser.feed(index_path.read_text(encoding="utf-8"))
 
@@ -77,11 +85,13 @@ def _discover_asset_paths(site_dir: Path) -> set[str]:
 
 
 def _placeholder_bytes(ext: str) -> bytes:
+    """Load bundled placeholder bytes for a given extension."""
     filename = 'placeholder.jpg' if ext in {'.jpg', '.jpeg'} else 'placeholder.png'
     return resources.files(__package__).joinpath('placeholders').joinpath(filename).read_bytes()
 
 
 def _hash_file(path: Path) -> str:
+    """Hash a file with SHA-256."""
     digest = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(8192), b""):
@@ -98,6 +108,7 @@ def _resolve_image_prompt_for_slot(
     image_follow_up_context: str | None = None,
     debug: bool = False,
 ) -> str:
+    """Generate a prompt for a single image slot via Gemini."""
     from . import gemini_runner  # Local import to avoid circular dependency.
 
     return gemini_runner.generate_image_prompt(
@@ -109,15 +120,6 @@ def _resolve_image_prompt_for_slot(
         follow_up_context=image_follow_up_context,
         debug=debug,
     )
-
-
-class _PartPayload(TypedDict):
-    text: str
-
-
-class _ContentPayload(TypedDict):
-    role: str
-    parts: list[_PartPayload]
 
 
 class _GenerationConfig(TypedDict):
@@ -137,6 +139,7 @@ class _InlineData(TypedDict):
 class _PartResponse(TypedDict, total=False):
     inlineData: _InlineData
     inline_data: _InlineData
+    text: str
 
 
 class _ContentResponse(TypedDict):
@@ -152,12 +155,114 @@ class _GenerateContentResponse(TypedDict, total=False):
     usageMetadata: _UsageMetadata
 
 
-def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, _UsageMetadata | None]:
+class _InlineDataPayload(TypedDict):
+    mimeType: str
+    data: str
+
+
+class _PartPayload(TypedDict, total=False):
+    text: str
+    inlineData: _InlineDataPayload
+
+
+class _ContentPayload(TypedDict):
+    role: str
+    parts: list[_PartPayload]
+
+
+def _guess_image_mime_type(path: Path) -> str:
+    """Return a best-effort MIME type for an image path."""
+    return {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".avif": "image/avif",
+    }.get(path.suffix.lower(), "image/png")
+
+
+def _strip_code_fences(text: str) -> str:
+    """Remove Markdown code fences around text."""
+    match = re.match(r"\s*```(?:json)?\s*(.*?)\s*```\s*$", text, flags=re.DOTALL | re.IGNORECASE)
+    return match.group(1) if match else text.strip()
+
+
+def _format_reference_prompt(prompt: str, canonical_description: str | None) -> str:
+    """Prefix prompts with reference-image guidance."""
+    prefix = (
+        "Use the provided reference image as the exact product; preserve its shape, "
+        "colors, and branding."
+    )
+    if canonical_description:
+        return f"{prefix}\nCanonical product description: {canonical_description}\n{prompt}"
+    return f"{prefix} {prompt}"
+
+
+def _log_image_usage(usage: _UsageMetadata | None, config: Config, *, label: str = "Gemini Images") -> None:
+    """Log token usage and estimated image costs."""
+    if not usage:
+        return
+
+    prompt_tokens = usage.get("promptTokenCount")
+    completion_tokens = usage.get("candidatesTokenCount")
+    total_tokens = usage.get("totalTokenCount")
+
+    message = (
+        f"[{label}] Tokens used (model={config.gemini_image_model}): "
+        f"prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
+    )
+
+    total = total_tokens
+    if total is None and (prompt_tokens is not None or completion_tokens is not None):
+        total = (prompt_tokens or 0) + (completion_tokens or 0)
+
+    input_cost = None
+    output_cost = None
+    if config.gemini_image_input_cost_per_1k_tokens is not None and prompt_tokens is not None:
+        input_cost = (prompt_tokens / 1000.0) * config.gemini_image_input_cost_per_1k_tokens
+    if config.gemini_image_cost_per_1k_tokens is not None and completion_tokens is not None:
+        output_cost = (completion_tokens / 1000.0) * config.gemini_image_cost_per_1k_tokens
+
+    estimated_cost = None
+    if input_cost is not None or output_cost is not None:
+        estimated_cost = (input_cost or 0.0) + (output_cost or 0.0)
+    elif config.gemini_image_cost_per_1k_tokens is not None and total is not None:
+        estimated_cost = (total / 1000.0) * config.gemini_image_cost_per_1k_tokens
+
+    if estimated_cost is not None:
+        message += f", estimated_cost={estimated_cost:.6f} USD"
+
+    print(message)
+
+
+def _request_image(
+    prompt: str,
+    model: str,
+    api_key: str,
+    *,
+    reference_image: bytes | None = None,
+    reference_mime_type: str | None = None,
+) -> tuple[bytes, _UsageMetadata | None]:
+    """Request an image from Gemini for the provided prompt."""
     # Use responseModalities for the Gemini 3 image models (responseMimeType is rejected with
     # INVALID_ARGUMENT on those preview endpoints).
     generation_config: _GenerationConfig = {"responseModalities": ["IMAGE"]}
 
-    contents: list[_ContentPayload] = [{"role": "user", "parts": [{"text": prompt}]}]
+    parts: list[_PartPayload] = []
+    if reference_image is not None:
+        mime_type = reference_mime_type or "image/png"
+        parts.append(
+            {
+                "inlineData": {
+                    "mimeType": mime_type,
+                    "data": base64.b64encode(reference_image).decode("ascii"),
+                }
+            }
+        )
+    parts.append({"text": prompt})
+
+    contents: list[_ContentPayload] = [{"role": "user", "parts": parts}]
     payload: dict[str, object] = {"contents": contents, "generationConfig": generation_config}
 
     resp = requests.post(
@@ -184,6 +289,98 @@ def _request_image(prompt: str, model: str, api_key: str) -> tuple[bytes, _Usage
 
     usage = data.get("usageMetadata")
     return base64.b64decode(image_b64), usage
+
+
+def _request_text_with_image(
+    prompt: str,
+    model: str,
+    api_key: str,
+    *,
+    image_bytes: bytes,
+    image_mime_type: str | None = None,
+) -> tuple[str, _UsageMetadata | None]:
+    """Request a text response from Gemini for an image + prompt."""
+    generation_config: _GenerationConfig = {"responseModalities": ["TEXT"]}
+
+    parts: list[_PartPayload] = [
+        {
+            "inlineData": {
+                "mimeType": image_mime_type or "image/png",
+                "data": base64.b64encode(image_bytes).decode("ascii"),
+            }
+        },
+        {"text": prompt},
+    ]
+
+    contents: list[_ContentPayload] = [{"role": "user", "parts": parts}]
+    payload: dict[str, object] = {"contents": contents, "generationConfig": generation_config}
+
+    resp = requests.post(
+        _API_URL.format(model=model),
+        params={"key": api_key},
+        json=payload,
+        timeout=120,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini text request failed: {resp.status_code} {resp.text}")
+
+    data = cast(_GenerateContentResponse, resp.json())
+    try:
+        candidates = data.get("candidates")
+        if not candidates:
+            raise KeyError("candidates")
+        parts_response = candidates[0]["content"]["parts"]
+        text_value = None
+        for part in parts_response:
+            text_value = part.get("text")
+            if text_value:
+                break
+        if not text_value:
+            raise KeyError("text")
+    except (KeyError, IndexError) as exc:
+        raise RuntimeError(f"Unexpected Gemini text response: {data}") from exc
+
+    usage = data.get("usageMetadata")
+    return text_value, usage
+
+
+def _extract_description(text: str) -> str:
+    """Extract a description field from JSON-like output."""
+    stripped = _strip_code_fences(text)
+    try:
+        data_obj = json.loads(stripped)
+    except json.JSONDecodeError:
+        return stripped
+    if isinstance(data_obj, dict):
+        data_obj = cast(dict[str, object], data_obj)
+        desc = data_obj.get("description") or data_obj.get("canonical_description")
+        if isinstance(desc, str) and desc.strip():
+            return desc.strip()
+    return stripped
+
+
+def _describe_canonical_product(
+    image_bytes: bytes,
+    image_mime_type: str | None,
+    project_root: Path,
+    config: Config,
+    api_key: str,
+) -> str:
+    """Describe the canonical product image using the prompt template."""
+    template_path = project_root / "prompts" / "image_product_description.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Image description template not found at {template_path}")
+
+    prompt_text = template_path.read_text(encoding="utf-8")
+    text, usage = _request_text_with_image(
+        prompt_text,
+        config.gemini_image_model,
+        api_key,
+        image_bytes=image_bytes,
+        image_mime_type=image_mime_type,
+    )
+    _log_image_usage(usage, config, label="Gemini Image Description")
+    return _extract_description(text)
 
 
 def ensure_placeholder_assets(slug: str, project_root: Path) -> list[Path]:
@@ -260,6 +457,7 @@ def generate_image_prompts_for_site(
         return []
 
     def _slot_alt(slot: ImageSlot) -> str:
+        """Derive a usable alt description for a slot."""
         alt_clean = slot.alt.strip() if slot.alt else ""
         if alt_clean:
             return alt_clean
@@ -303,6 +501,7 @@ def generate_images_for_site(
     image_follow_up_context: str | None = None,
     debug: bool = False,
 ) -> list[Path]:
+    """Generate images for each slot in a site landing page."""
     api_key = config.gemini_api_key or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("Set GEMINI_API_KEY to enable Gemini image generation.")
@@ -326,10 +525,66 @@ def generate_images_for_site(
     )
     prompts_map = {src: prompt for src, prompt in prompts_list}
 
-    generated: list[Path] = []
+    def _slot_alt(slot: ImageSlot) -> str:
+        """Derive a usable alt description for a slot."""
+        alt_clean = slot.alt.strip() if slot.alt else ""
+        if alt_clean:
+            return alt_clean
+        return Path(slot.src).stem.replace("-", " ").replace("_", " ")
+
+    slots_payload: list[dict[str, str]] = []
     for slot in slots:
+        prompt_text = prompts_map.get(slot.src)
+        if not prompt_text:
+            prompt_text = _resolve_image_prompt_for_slot(
+                slot,
+                product_prompt,
+                project_root,
+                config,
+                image_follow_up_context=image_follow_up_context,
+                debug=debug,
+            )
+            prompts_map[slot.src] = prompt_text
+        slots_payload.append({"src": slot.src, "alt": _slot_alt(slot), "prompt": prompt_text})
+
+    from . import gemini_runner  # Local import to avoid circular dependency.
+
+    canonical_src, product_slots = gemini_runner.select_product_slots(
+        slots_payload,
+        product_prompt,
+        project_root,
+        config,
+        debug=debug,
+    )
+
+    slot_order = [slot.src for slot in slots]
+    if not product_slots:
+        canonical_src = ""
+
+    canonical_index = slot_order.index(canonical_src) if canonical_src else None
+    canonical_reference: bytes | None = None
+    canonical_mime_type: str | None = None
+    canonical_description: str | None = None
+
+    generated: list[Path] = []
+    for idx, slot in enumerate(slots):
         target_path = site_dir / slot.src
-        if target_path.exists() and not overwrite and not _is_placeholder_asset(target_path):
+        existing = target_path.exists() and not overwrite and not _is_placeholder_asset(target_path)
+        if existing:
+            if canonical_src == slot.src and canonical_reference is None:
+                try:
+                    canonical_reference = target_path.read_bytes()
+                except OSError:
+                    canonical_reference = None
+                if canonical_reference is not None:
+                    canonical_mime_type = _guess_image_mime_type(target_path)
+                    canonical_description = _describe_canonical_product(
+                        canonical_reference,
+                        canonical_mime_type,
+                        project_root,
+                        config,
+                        api_key,
+                    )
             continue
 
         prompt_text = prompts_map.get(slot.src)
@@ -342,29 +597,41 @@ def generate_images_for_site(
                 image_follow_up_context=image_follow_up_context,
                 debug=debug,
             )
-        image_bytes, usage = _request_image(prompt_text, config.gemini_image_model, api_key)
+            prompts_map[slot.src] = prompt_text
+
+        should_use_reference = (
+            canonical_reference is not None
+            and canonical_index is not None
+            and idx > canonical_index
+            and slot.src in product_slots
+        )
+
+        if should_use_reference:
+            prompt_text = _format_reference_prompt(prompt_text, canonical_description)
+            image_bytes, usage = _request_image(
+                prompt_text,
+                config.gemini_image_model,
+                api_key,
+                reference_image=canonical_reference,
+                reference_mime_type=canonical_mime_type,
+            )
+        else:
+            image_bytes, usage = _request_image(prompt_text, config.gemini_image_model, api_key)
 
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(image_bytes)
-        if usage:
-            prompt_tokens = usage.get("promptTokenCount")
-            completion_tokens = usage.get("candidatesTokenCount")
-            total_tokens = usage.get("totalTokenCount")
-
-            message = (
-                f"[Gemini Images] Tokens used (model={config.gemini_image_model}): "
-                f"prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
-            )
-
-            total = total_tokens
-            if total is None and (prompt_tokens is not None or completion_tokens is not None):
-                total = (prompt_tokens or 0) + (completion_tokens or 0)
-
-            if config.gemini_image_cost_per_1k_tokens is not None and total is not None:
-                estimated_cost = (total / 1000.0) * config.gemini_image_cost_per_1k_tokens
-                message += f", estimated_cost={estimated_cost:.6f} USD"
-
-            print(message)
+        _log_image_usage(usage, config)
         generated.append(target_path)
+
+        if canonical_src == slot.src:
+            canonical_reference = image_bytes
+            canonical_mime_type = _guess_image_mime_type(target_path)
+            canonical_description = _describe_canonical_product(
+                canonical_reference,
+                canonical_mime_type,
+                project_root,
+                config,
+                api_key,
+            )
 
     return generated

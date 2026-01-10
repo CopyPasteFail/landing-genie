@@ -1,0 +1,249 @@
+[
+  {
+    "product_prompt": "a power tool that can break any cuffs",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Cuffs Breaker in action",
+        "prompt": "Photorealistic image of a sleek, rugged power tool, the 'Cuffs Breaker', actively severing a metallic cuff on a workbench in a modern, well-lit workshop. Sparks fly, demonstrating its power and precision. Dynamic angle, focus on the tool and the breaking cuff, emphasizing raw strength and advanced engineering."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "High-Speed Actuation",
+        "prompt": "Close-up, photorealistic shot highlighting the 'Cuffs Breaker's' high-speed actuation mechanism. Motion blur subtly conveys rapid movement, perhaps showing a part of the tool moving incredibly fast. Sleek design details visible, emphasizing engineering prowess in a workshop setting."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "Ergonomic Design",
+        "prompt": "Photorealistic image showcasing the ergonomic design of the 'Cuffs Breaker'. A gloved hand firmly grips the tool, demonstrating a comfortable and secure hold. The tool's contours and texture are highlighted, implying ease of use and reduced fatigue in a workshop environment."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Universal Compatibility",
+        "prompt": "Studio shot, photorealistic, of the 'Cuffs Breaker' alongside a diverse array of cuff types or interchangeable attachments, subtly arranged on a workshop bench. This illustrates its universal compatibility and adaptability to different scenarios. Clean, professional lighting accentuates variety."
+      },
+      {
+        "src": "assets/feature-4.png",
+        "alt": "Durable Construction",
+        "prompt": "Photorealistic image of the 'Cuffs Breaker' in a rugged, industrial workshop setting, perhaps with some minor wear and tear (but not damage) hinting at its durability. The tool's robust materials and solid build are prominent, conveying long-lasting performance and resilience under tough conditions."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/feature-1.png", "assets/feature-2.png", "assets/feature-3.png", "assets/feature-4.png"]
+  },
+  {
+    "product_prompt": "a power tool that can break any cuffs",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Cuffs Breaker Power Tool",
+        "prompt": "A powerful, rugged, photorealistic wide shot of the 'Cuffs Breaker' power tool in action, shattering metal cuffs with intense sparks and debris. Gritty, realistic lighting emphasizes raw strength. The tool is front and center, dominating the frame. Industrial, dark background hints at harsh environments. Dynamic motion blur for high impact."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "Feature 1: Real-time Force Display",
+        "prompt": "Photorealistic close-up of the 'Cuffs Breaker' power tool's integrated digital display, vividly showcasing a 'Real-time Force Display' with glowing, high-contrast readouts. Sharp focus on the screen, reflecting subtle ambient light from an industrial setting. Emphasize high-tech functionality and precision."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "Feature 2: Industrial-Grade Durability",
+        "prompt": "Photorealistic image illustrating the 'Cuffs Breaker' power tool's 'Industrial-Grade Durability'. The tool lies on a rough, weathered surface in a challenging environment (e.g., concrete, metal debris), appearing robust and slightly worn but indestructible. Strong, dramatic lighting highlights its tough construction."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Feature 3: Ergonomic Design",
+        "prompt": "Photorealistic, detailed shot of a hand firmly and comfortably gripping the 'Cuffs Breaker' power tool, highlighting its 'Ergonomic Design'. Emphasize natural hand placement and textured grip for secure handling. Soft, focused lighting draws attention to the design contours and user comfort."
+      },
+      {
+        "src": "assets/social-proof.png",
+        "alt": "Engineering Excellence",
+        "prompt": "Photorealistic image symbolizing 'Engineering Excellence'. A highly detailed close-up of precision-machined internal components or intricate technical schematics of the 'Cuffs Breaker' power tool. Clean, professional studio lighting illuminates the fine details, conveying quality and advanced design."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/feature-1.png", "assets/feature-2.png", "assets/feature-3.png"]
+  },
+  {
+    "product_prompt": "a power tool that can break any cuffs",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Cuffs Breaker Power Tool",
+        "prompt": "A photorealistic, wide 16:9 shot of a sleek, powerful, and futuristic 'Cuffs Breaker Power Tool' actively and effortlessly snapping open a pair of heavy-duty metal cuffs. The background is clean and minimalist, emphasizing the tool's design and capability without any text overlays."
+      },
+      {
+        "src": "assets/problem.png",
+        "alt": "Person struggling with a locked mechanism",
+        "prompt": "Photorealistic image of a person's hands struggling to open a complex, locked mechanism, with a clean and uncluttered background. The scene should evoke a sense of frustration and a need for a powerful solution, without showing any text overlays."
+      },
+      {
+        "src": "assets/solution.png",
+        "alt": "Cuffs Breaker effortlessly breaking a lock",
+        "prompt": "A photorealistic image of the Cuffs Breaker, a powerful tool, effortlessly shattering a sturdy lock. The background is clean and uncluttered, with no text overlays."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "Feature 1 icon",
+        "prompt": "A photorealistic image of a sleek, powerful futuristic tool effortlessly breaking a pair of metallic handcuffs with a burst of energy, set against a clean, minimalist background. Focus on the tool's advanced design and the dramatic impact of the break."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "Feature 2 icon",
+        "prompt": "A photorealistic, close-up shot of a sleek, powerful, modern tool effortlessly breaking metal handcuffs, with sparks and fragments flying. The background is clean and minimalistic, emphasizing the tool's strength and precision, suitable for an icon."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Feature 3 icon",
+        "prompt": "A photorealistic, sleek, and powerful futuristic tool designed to effortlessly break any cuffs, set against a clean, minimalist background. The tool emanates a subtle glow, symbolizing its advanced capability and strength."
+      },
+      {
+        "src": "assets/feature-4.png",
+        "alt": "Feature 4 icon",
+        "prompt": "A close-up, photorealistic image of a sleek, futuristic power tool with a glowing tip, cleanly breaking through heavy-duty metal handcuffs. The background is clean and minimalistic, focusing solely on the tool and the broken cuffs."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/solution.png", "assets/feature-1.png", "assets/feature-2.png", "assets/feature-3.png", "assets/feature-4.png"]
+  },
+  {
+    "product_prompt": "a power tool that can break any cuffs",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Cuffs Breaker Power Tool",
+        "prompt": "Photorealistic image of a sleek, futuristic power tool, 'Cuffs Breaker', held by a strong, confident hand. The tool is gleaming under dramatic lighting, with subtle sparks indicating immense power. Background is a blurred, high-tech workshop or an abstract force field. Dynamic angle, epic scale, showcasing its ability to break through any material."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "Cuffs Breaker in action",
+        "prompt": "Close-up, photorealistic action shot of the 'Cuffs Breaker' power tool effortlessly slicing through a thick, metallic cuff. Sparks fly dramatically, and the material gives way under the tool's precision. Focus on the cutting mechanism and the effect on the cuff, conveying immense strength and efficiency."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "High Power Output",
+        "prompt": "Vibrant, photorealistic image illustrating the 'High Power Output' of the Cuffs Breaker. Energetic light effects emanate from the tool, casting a powerful glow. The tool is positioned dynamically, hinting at raw, unleashed energy, perhaps with a background showing a blurred, intense work environment."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Ergonomic Design",
+        "prompt": "Detailed, photorealistic shot highlighting the 'Ergonomic Design' of the Cuffs Breaker. A hand is comfortably gripping the tool, emphasizing its natural fit. Soft, diffused lighting accentuates the contours and textured grip. Focus on the intelligent design for comfort and control during intense use."
+      },
+      {
+        "src": "assets/feature-4.png",
+        "alt": "Safety Features",
+        "prompt": "Photorealistic image showcasing the 'Safety Features' of the Cuffs Breaker. The tool is in use, but with visible safety guards, illuminated warning indicators, or a protective glove on the user's hand. Emphasize secure operation, perhaps with a subtle force field effect around dangerous parts, ensuring user protection."
+      },
+      {
+        "src": "assets/feature-5.png",
+        "alt": "Long-lasting Battery",
+        "prompt": "Photorealistic image of the 'Long-lasting Battery' for the Cuffs Breaker, depicted as robust and integrated. It could be seen charging with a subtle energy aura, or shown as part of the tool, emphasizing its extended operational time. Clean, technical background, highlighting durability and continuous power."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/feature-1.png", "assets/feature-2.png", "assets/feature-3.png", "assets/feature-4.png"]
+  },
+  {
+    "product_prompt": "A small device that when clicked on prints a random quote from the tv show Seinfeld",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Seinfeld Quoter Device with characters illustration",
+        "prompt": "Photorealistic image of a vibrant, quirky, retro button-maker 'Seinfeld Quoter Device' being held by a smiling hand. The device playfully displays a Seinfeld quote. In the background, subtly illustrated, cheerful Seinfeld characters (Jerry, Elaine, George, Kramer) in a whimsical style, emphasizing humor and engagement. Bright, nostalgic color palette."
+      },
+      {
+        "src": "assets/solution.png",
+        "alt": "Seinfeld Quoter device in action",
+        "prompt": "Photorealistic close-up of a hand pressing a prominent, vibrant red button on a retro-styled 'Seinfeld Quoter Device.' A small screen on the device displays a classic Seinfeld quote, text clearly visible. The scene is brightly lit, conveying a quirky, humorous mood. The user's face is partially visible, showing amusement and engagement."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "Instant Quotes Icon",
+        "prompt": "Vibrant and quirky icon: a retro-styled thought bubble with a lightning bolt inside, emanating from a stylized 'Seinfeld Quoter Device' silhouette. The lightning bolt signifies instant delivery of quotes. Bright, energetic colors on a clean background, conveying quick access and humor."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "Nostalgia Icon",
+        "prompt": "Vibrant and quirky icon: a vintage television set displaying a classic Seinfeld scene or logo, with a subtle glow, evoking nostalgia. The television is styled like a retro appliance. Bright, warm colors on a clean background, conveying a humorous and sentimental feeling."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Portable Icon",
+        "prompt": "Vibrant and quirky icon: a stylized, small retro button-maker 'Seinfeld Quoter Device' with a pair of wings or small wheels, indicating portability. The device is compact and easy to carry. Bright, playful colors on a clean background, emphasizing convenience and fun."
+      },
+      {
+        "src": "assets/feature-4.png",
+        "alt": "Refillable Icon",
+        "prompt": "Vibrant and quirky icon: a retro-futuristic cloud symbol with a download arrow pointing into a stylized 'Seinfeld Quoter Device' silhouette, representing an endless stream of new quotes. Bright, imaginative colors on a clean background, conveying continuous content and quirky innovation."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/solution.png"]
+  },
+  {
+    "product_prompt": "A clothes warmer you put under your clothers, to warm you up, it also comes with an app to control the heating",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Clothers Warmer product visual",
+        "prompt": "A serene and energetic person, dressed fashionably, enjoying a wide, immersive outdoor scene. They are subtly using a sleek, cutting-edge smartphone app to control their discreet clothes warmer, creating a visible 'personal cloud of warmth' around them. The lighting is warm and inviting, highlighting a sense of luxury and smart control. Photorealistic."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "Smart Control Feature",
+        "prompt": "A close-up, photorealistic shot of a hand interacting with a sleek, cutting-edge smartphone displaying the clothes warmer app. The app interface prominently shows intuitive temperature control settings, illuminated by warm, inviting light. The background is softly blurred, suggesting an outdoor, luxurious environment."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "Long-lasting Battery Life",
+        "prompt": "A photorealistic shot of a person, exuding sleek luxury, confidently navigating a vast outdoor landscape as the sun sets with warm, inviting light. They are comfortably warm, implying extended use of the discreet, cutting-edge clothes warmer, showcasing its long-lasting battery life and portability."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Premium Materials",
+        "prompt": "A close-up, photorealistic macro shot highlighting the premium, sleek materials of the fashionable clothes warmer. Warm, inviting light accentuates the texture and quality, emphasizing its luxurious and cutting-edge design, possibly showing it discreetly integrated into clothing."
+      },
+      {
+        "src": "assets/how-it-works-1.png",
+        "alt": "Step 1: Place warmer",
+        "prompt": "A photorealistic, warm & inviting close-up shot of hands discreetly placing the sleek, utilitarian clothes warmer inside clothing. The action suggests the 'before' aspect, leading to warmth, emphasizing its smart control and ease of use."
+      },
+      {
+        "src": "assets/how-it-works-2.png",
+        "alt": "Step 2: Connect to app",
+        "prompt": "A photorealistic image with warm, inviting light showing a person's hands holding a smartphone, the screen displaying the clothes warmer app with active temperature control. A subtle visual cue, like a soft glow, connects the app to the discreet, cutting-edge warmer in the background, signifying smart control."
+      },
+      {
+        "src": "assets/how-it-works-3.png",
+        "alt": "Step 3: Enjoy warmth",
+        "prompt": "A photorealistic, wide outdoor scene under warm, inviting light, showing a person radiating serene energy. They are visibly comfortable, enveloped in a 'personal cloud of warmth' from their clothes warmer, showcasing the 'after' effect of the product in use, emphasizing luxury and comfort."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/feature-1.png", "assets/feature-3.png", "assets/how-it-works-1.png", "assets/how-it-works-2.png"]
+  },
+  {
+    "product_prompt": "cloud services that store the servers high above earth usin balloons and solar panels",
+    "slots": [
+      {
+        "src": "assets/hero.png",
+        "alt": "Abstract illustration of Sky Cloud stratospheric nodes",
+        "prompt": "Panoramic wide shot 3D illustration of sleek, minimalist white server balloons floating at the edge of space. Apple-style aesthetic with high-tech polished surfaces. Fluffy cumulus clouds below illuminated by a dramatic golden hour sunset. Color palette of deep space blue and neon glow. Awe-inspiring, futuristic mood, high contrast, purely scenic with no humans."
+      },
+      {
+        "src": "assets/feature-1.png",
+        "alt": "Solar energy illustration",
+        "prompt": "Clean 3D illustration of a sleek, minimalist solar panel array integrated into a stratospheric node. Futuristic Apple-style design with white polished textures. Dramatic golden hour lighting at the edge of space. Deep space blue background with neon gold energy accents. Focused on sustainable high-tech energy capture, purely mechanical."
+      },
+      {
+        "src": "assets/feature-2.png",
+        "alt": "Disaster resilience illustration",
+        "prompt": "3D minimalist illustration of a Sky Cloud pod floating serenely in the clear stratosphere. Far below, a dramatic storm with dark clouds and neon purple lightning highlights the disaster resilience of the platform. Deep space blue and neon color palette. Futuristic, calm, and secure mood. Apple-style sleek minimalism."
+      },
+      {
+        "src": "assets/feature-3.png",
+        "alt": "Data sovereignty illustration",
+        "prompt": "Sleek 3D illustration of a lone server node in the stratospheric sky, symbolizing data sovereignty. Polished white minimalist surfaces, glowing neon blue data rings forming a protective digital shield. High contrast lighting at the edge of space. Deep space blue background. Purely mechanical and isolated, Apple-style minimalism."
+      },
+      {
+        "src": "assets/diagram.png",
+        "alt": "Technical diagram of the Sky Cloud downlink loop",
+        "prompt": "Clean flat vector technical diagram on a deep space blue background. Minimalist white and neon blue lines showing the data downlink loop between a sleek ground station and a stratospheric balloon node. High-tech, premium look, sophisticated thin line-art style with Apple-style technical clarity."
+      }
+    ],
+    "expected_product_slots": ["assets/hero.png", "assets/feature-1.png",  "assets/feature-2.png", "assets/feature-3.png", "assets/diagram.png"]
+  }
+]

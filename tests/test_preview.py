@@ -1,3 +1,5 @@
+"""Tests for preview server behavior."""
+
 import json
 import time
 from urllib import request
@@ -8,6 +10,7 @@ from landing_genie.config import Config
 
 
 def _dummy_config() -> Config:
+    """Build a dummy Config for preview tests."""
     return Config(
         root_domain="example.com",
         cf_account_id="acc",
@@ -22,6 +25,7 @@ def _dummy_config() -> Config:
 
 
 def test_inject_preview_layer_inserts_script() -> None:
+    """Ensure preview overlay script is injected before </body>."""
     html = "<html><body><h1>Hello</h1></body></html>"
     injected = preview._inject_preview_layer(html)
     assert "landing-genie-preview-script" in injected
@@ -31,6 +35,7 @@ def test_inject_preview_layer_inserts_script() -> None:
 
 
 def test_refine_endpoint_invokes_refine_site(monkeypatch, tmp_path) -> None:
+    """Ensure preview refine endpoint calls refine_site and placeholders."""
     site_dir = tmp_path / "sites" / "demo"
     site_dir.mkdir(parents=True)
     (site_dir / "index.html").write_text("<html><body><section>Demo</section></body></html>")
@@ -38,6 +43,7 @@ def test_refine_endpoint_invokes_refine_site(monkeypatch, tmp_path) -> None:
     calls: dict[str, object] = {}
 
     def fake_refine_site(slug, feedback, project_root, config, debug=False):
+        """Capture refine_site inputs for assertions."""
         calls["slug"] = slug
         calls["feedback"] = feedback
         calls["project_root"] = project_root
@@ -46,6 +52,7 @@ def test_refine_endpoint_invokes_refine_site(monkeypatch, tmp_path) -> None:
     placeholder_calls: list[tuple[str, object]] = []
 
     def fake_placeholders(slug, project_root):
+        """Capture placeholder asset generation calls."""
         placeholder_calls.append((slug, project_root))
         return []
 

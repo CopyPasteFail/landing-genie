@@ -1,3 +1,5 @@
+"""Local preview server with inline refinement support."""
+
 from __future__ import annotations
 
 import http.server
@@ -22,6 +24,7 @@ from .site_paths import normalize_site_dir
 
 @dataclass
 class _ServerState:
+    """Track an active preview server instance."""
     httpd: socketserver.TCPServer
     thread: Thread
     slug: str
@@ -35,6 +38,7 @@ _SERVERS: dict[int, _ServerState] = {}
 
 
 class ReusableTCPServer(socketserver.TCPServer):
+    """TCP server that can reuse an existing address."""
     allow_reuse_address = True
 
 
@@ -45,6 +49,7 @@ class _RefinePayload(TypedDict, total=False):
 
 
 def _stop_server(port: int) -> None:
+    """Stop and remove the preview server bound to a port."""
     server_info = _SERVERS.pop(port, None)
     if not server_info:
         return
@@ -54,6 +59,7 @@ def _stop_server(port: int) -> None:
 
 
 def _configs_match(first: Config | None, second: Config | None) -> bool:
+    """Return True if both configs are equal or both None."""
     if first is None and second is None:
         return True
     if first is None or second is None:
@@ -62,6 +68,7 @@ def _configs_match(first: Config | None, second: Config | None) -> bool:
 
 
 def _inject_preview_layer(html: str) -> str:
+    """Inject preview UI and refinement script into HTML."""
     overlay = """
 <style id="landing-genie-preview-style">
   :root { --lg-accent: #7c3aed; --lg-bg: rgba(17, 24, 39, 0.75); --lg-panel: #0f172a; --lg-text: #e2e8f0; --lg-muted: #94a3b8; }
@@ -266,6 +273,7 @@ def _inject_preview_layer(html: str) -> str:
 
 
 def _build_feedback(section_label: str, section_text: str, instruction: str) -> str:
+    """Format a refinement instruction for Gemini."""
     text = (section_text or "").strip()
     if len(text) > 1600:
         text = text[:1600] + "..."
@@ -287,6 +295,7 @@ def serve_local(
     port: int = 4173,
     debug: bool = False,
 ) -> str:
+    """Serve a local preview server with refinement endpoints."""
     site_dir = normalize_site_dir(slug, project_root)
     if not site_dir.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
@@ -305,9 +314,11 @@ def serve_local(
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
+            """Initialize the handler with the site directory."""
             super().__init__(*args, directory=str(site_dir), **kwargs)
 
         def log_message(self, format: str, *args: Any) -> None:
+            """Suppress non-error logs unless debug is enabled."""
             # Only log errors unless debug is enabled.
             if not debug:
                 try:
@@ -319,6 +330,7 @@ def serve_local(
             super().log_message(format, *args)
 
         def _serve_html(self, write_body: bool = True) -> None:
+            """Serve HTML with the injected preview layer."""
             parsed = urlparse(self.path)
             requested = parsed.path or "/"
             relative = "index.html" if requested in {"/", ""} else requested.lstrip("/")
@@ -352,18 +364,21 @@ def serve_local(
                     return
 
         def do_HEAD(self) -> None:
+            """Handle HEAD requests for HTML content."""
             parsed = urlparse(self.path)
             if parsed.path.endswith(".html") or parsed.path in {"/", ""}:
                 return self._serve_html(write_body=False)
             return super().do_HEAD()
 
         def do_GET(self) -> None:
+            """Handle GET requests for HTML or static assets."""
             parsed = urlparse(self.path)
             if parsed.path.endswith(".html") or parsed.path in {"/", ""}:
                 return self._serve_html(write_body=True)
             return super().do_GET()
 
         def do_POST(self) -> None:
+            """Handle refinement requests from the preview UI."""
             parsed = urlparse(self.path)
             if parsed.path != "/__preview/refine":
                 self.send_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
@@ -403,6 +418,7 @@ def serve_local(
             self._json_response(HTTPStatus.OK, {"status": "ok"})
 
         def _json_response(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
+            """Send a JSON response with the given status."""
             data = json.dumps(payload).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -416,6 +432,7 @@ def serve_local(
     bound_port = httpd.server_address[1]
 
     def _run() -> None:
+        """Run the preview server loop."""
         if debug:
             print(f"Serving {site_dir} at http://localhost:{bound_port}")
         httpd.serve_forever()

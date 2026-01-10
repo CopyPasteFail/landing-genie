@@ -1,3 +1,5 @@
+"""Cloudflare Pages deployment and DNS helpers."""
+
 from __future__ import annotations
 
 import os
@@ -20,6 +22,7 @@ class CloudflareAPIError(RuntimeError):
 
 
 def _headers(config: Config) -> Dict[str, str]:
+    """Build authorization headers for Cloudflare API requests."""
     return {"Authorization": f"Bearer {config.cf_api_token}"}
 
 
@@ -57,6 +60,7 @@ def _request(method: str, path: str, config: Config, **kwargs: Any) -> Any:
 
 
 def _sanitize_slug(slug: str) -> str:
+    """Normalize a slug into a safe Cloudflare project segment."""
     out: List[str] = []
     for ch in slug.lower():
         if ch.isalnum() or ch == "-":
@@ -68,6 +72,7 @@ def _sanitize_slug(slug: str) -> str:
 
 
 def _sanitize_domain_for_project(root_domain: str) -> str:
+    """Normalize a root domain into a safe project name segment."""
     out: List[str] = []
     for ch in root_domain.lower():
         if ch.isalnum() or ch == "-":
@@ -81,6 +86,7 @@ def _sanitize_domain_for_project(root_domain: str) -> str:
 
 
 def _project_name(slug: str, root_domain: str) -> str:
+    """Build a Cloudflare Pages project name for a slug/domain."""
     slug_part = _sanitize_slug(slug)
     domain_part = _sanitize_domain_for_project(root_domain)
     name = f"lp-{slug_part}-{domain_part}"
@@ -194,6 +200,7 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
 
 
 def _find_zone_id(config: Config) -> str:
+    """Find and cache the Cloudflare zone ID for the root domain."""
     if config.root_domain in _ZONE_CACHE:
         return _ZONE_CACHE[config.root_domain]
 

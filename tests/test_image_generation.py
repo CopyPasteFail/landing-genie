@@ -1,3 +1,5 @@
+"""Integration tests for image generation."""
+
 import os
 from pathlib import Path
 
@@ -8,6 +10,7 @@ from landing_genie.image_generator import generate_images_for_site
 
 
 def _require_env_vars(names: list[str]) -> None:
+    """Skip tests when required environment variables are missing."""
     missing = [name for name in names if not os.getenv(name)]
     if missing:
         pytest.skip(f"Missing required env vars for integration test: {', '.join(missing)}")

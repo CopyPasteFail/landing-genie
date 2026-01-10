@@ -1,3 +1,5 @@
+"""Configuration loading and defaults."""
+
 from __future__ import annotations
 import os
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ load_dotenv()
 
 @dataclass
 class Config:
+    """Runtime configuration for landing-genie."""
     root_domain: str
     cf_account_id: str
     cf_api_token: str
@@ -18,9 +21,11 @@ class Config:
     gemini_api_key: str | None
     gemini_telemetry_otlp_endpoint: str | None
     gemini_image_cost_per_1k_tokens: float | None
+    gemini_image_input_cost_per_1k_tokens: float | None
 
     @classmethod
     def load(cls) -> "Config":
+        """Load configuration from environment variables."""
         @overload
         def _get(name: str, *, required: Literal[True] = True, default: None = None) -> str:
             ...
@@ -34,6 +39,7 @@ class Config:
             ...
 
         def _get(name: str, *, required: bool = True, default: str | None = None) -> str | None:
+            """Read an environment variable with optional defaults and validation."""
             value = os.getenv(name)
             if value is None:
                 value = default
@@ -41,15 +47,27 @@ class Config:
                 raise RuntimeError(f"Missing required environment variable: {name}")
             return value
 
-        image_cost_str = _get("GEMINI_IMAGE_COST_PER_1K_TOKENS", required=False, default=None)
+        image_cost_str = _get("GEMINI_IMAGE_OUTPUT_COST_PER_1K_TOKENS", required=False, default=None)
+        image_input_cost_str = _get("GEMINI_IMAGE_INPUT_COST_PER_1K_TOKENS", required=False, default=None)
         image_cost_per_1k_tokens: float | None
+        image_input_cost_per_1k_tokens: float | None
         if image_cost_str is None or image_cost_str == "":
             image_cost_per_1k_tokens = None
         else:
             try:
                 image_cost_per_1k_tokens = float(image_cost_str)
             except ValueError:
-                raise RuntimeError("Invalid GEMINI_IMAGE_COST_PER_1K_TOKENS; must be a number (e.g. 0.03)")
+                raise RuntimeError("Invalid GEMINI_IMAGE_OUTPUT_COST_PER_1K_TOKENS; must be a number (e.g. 0.03)")
+
+        if image_input_cost_str is None or image_input_cost_str == "":
+            image_input_cost_per_1k_tokens = None
+        else:
+            try:
+                image_input_cost_per_1k_tokens = float(image_input_cost_str)
+            except ValueError:
+                raise RuntimeError(
+                    "Invalid GEMINI_IMAGE_INPUT_COST_PER_1K_TOKENS; must be a number (e.g. 0.0003)"
+                )
 
         return cls(
             root_domain=_get("ROOT_DOMAIN"),
@@ -61,4 +79,5 @@ class Config:
             gemini_api_key=_get("GEMINI_API_KEY", required=False, default=None),
             gemini_telemetry_otlp_endpoint=_get("GEMINI_TELEMETRY_OTLP_ENDPOINT", required=False, default=None),
             gemini_image_cost_per_1k_tokens=image_cost_per_1k_tokens,
+            gemini_image_input_cost_per_1k_tokens=image_input_cost_per_1k_tokens,
         )

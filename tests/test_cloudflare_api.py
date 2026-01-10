@@ -1,3 +1,5 @@
+"""Tests for Cloudflare API helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -10,6 +12,7 @@ from landing_genie.config import Config
 
 
 def _config() -> Config:
+    """Build a test Config instance."""
     return Config(
         root_domain="example.com",
         cf_account_id="account",
@@ -24,9 +27,11 @@ def _config() -> Config:
 
 
 def test_ensure_pages_project_skips_when_existing(monkeypatch: MonkeyPatch) -> None:
+    """Ensure Pages project creation is skipped when it already exists."""
     calls: Dict[str, int] = {"post": 0, "get": 0}
 
     def fake_get(url: str, headers: Dict[str, str], timeout: int):
+        """Return a fake existing project response."""
         calls["get"] += 1
 
         class Resp:
@@ -36,11 +41,13 @@ def test_ensure_pages_project_skips_when_existing(monkeypatch: MonkeyPatch) -> N
 
             @staticmethod
             def json() -> Dict[str, Any]:
+                """Return a fake JSON payload."""
                 return {"success": True, "result": {"name": "proj"}}
 
         return Resp()
 
     def fake_request(method: str, path: str, config: Config, **kwargs: Any) -> Dict[str, Any]:
+        """Track API calls for project creation."""
         calls["post"] += 1
         return {}
 
@@ -54,9 +61,11 @@ def test_ensure_pages_project_skips_when_existing(monkeypatch: MonkeyPatch) -> N
 
 
 def test_ensure_pages_project_creates_when_missing(monkeypatch: MonkeyPatch) -> None:
+    """Ensure Pages project is created when missing."""
     calls: Dict[str, Any] = {}
 
     def fake_get(url: str, headers: Dict[str, str], timeout: int):
+        """Return a 404 to simulate a missing project."""
         class Resp:
             status_code = 404
             ok = False
@@ -64,11 +73,13 @@ def test_ensure_pages_project_creates_when_missing(monkeypatch: MonkeyPatch) -> 
 
             @staticmethod
             def json() -> Dict[str, Any]:
+                """Return a fake JSON payload."""
                 return {"success": False}
 
         return Resp()
 
     def fake_request(method: str, path: str, config: Config, **kwargs: Any) -> Dict[str, Any]:
+        """Capture request payload for project creation."""
         calls["method"] = method
         calls["path"] = path
         calls["json"] = kwargs.get("json")

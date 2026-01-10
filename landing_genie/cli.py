@@ -1,3 +1,5 @@
+"""CLI commands for generating and deploying landing pages."""
+
 from __future__ import annotations
 
 import os
@@ -27,6 +29,7 @@ app = typer.Typer(help="landing-genie - generate and deploy AI landing pages")
 
 
 def _project_root() -> Path:
+    """Return the repository root path."""
     return Path(__file__).resolve().parents[1]
 
 

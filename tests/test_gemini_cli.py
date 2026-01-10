@@ -1,3 +1,5 @@
+"""Smoke tests for the Gemini CLI integration."""
+
 import json
 import os
 import shutil

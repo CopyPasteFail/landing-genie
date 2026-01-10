@@ -1,3 +1,5 @@
+"""Tests for image prompt generation and follow-ups."""
+
 from pathlib import Path
 from typing import Any, Optional
 
@@ -6,6 +8,7 @@ from landing_genie.config import Config
 
 
 def _test_config() -> Config:
+    """Build a test Config instance."""
     return Config(
         root_domain="example.com",
         cf_account_id="test-account",
@@ -20,6 +23,7 @@ def _test_config() -> Config:
 
 
 def test_suggest_image_follow_up_questions(tmp_path, monkeypatch) -> None:
+    """Ensure image follow-up questions are parsed and logged."""
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "image_follow_up_questions_prompt.md").write_text(
@@ -39,6 +43,7 @@ def test_suggest_image_follow_up_questions(tmp_path, monkeypatch) -> None:
         capture_output: bool = False,
         debug: bool = False,
     ) -> str:
+        """Capture follow-up prompt and return stub JSON."""
         call_log.append({"prompt": prompt_text, "output_format": output_format, "capture_output": capture_output})
         return stdout
 
@@ -56,6 +61,7 @@ def test_suggest_image_follow_up_questions(tmp_path, monkeypatch) -> None:
 
 
 def test_generate_image_prompt_uses_template(tmp_path, monkeypatch) -> None:
+    """Ensure image prompt template fields are filled."""
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "image_prompt.md").write_text(
@@ -75,6 +81,7 @@ def test_generate_image_prompt_uses_template(tmp_path, monkeypatch) -> None:
         capture_output: bool = False,
         debug: bool = False,
     ) -> str:
+        """Capture prompt text and return stub image prompt."""
         call_log.append(prompt_text)
         return '{"prompt": "final image prompt"}'
 

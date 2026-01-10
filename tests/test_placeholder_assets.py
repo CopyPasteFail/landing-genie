@@ -1,3 +1,5 @@
+"""Tests for placeholder asset creation and detection."""
+
 from pathlib import Path
 
 from landing_genie.image_generator import (
@@ -8,6 +10,7 @@ from landing_genie.image_generator import (
 
 
 def test_zero_byte_assets_are_replaced(tmp_path: Path) -> None:
+    """Ensure zero-byte assets are replaced with placeholders."""
     slug = "placeholder-test"
     site_dir = tmp_path / "sites" / slug
     assets_dir = site_dir / "assets"
@@ -34,6 +37,7 @@ def test_zero_byte_assets_are_replaced(tmp_path: Path) -> None:
 
 
 def test_is_placeholder_detection(tmp_path: Path) -> None:
+    """Verify placeholder detection for various asset contents."""
     assets_dir = tmp_path / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
 

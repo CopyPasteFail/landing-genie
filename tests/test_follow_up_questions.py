@@ -1,3 +1,5 @@
+"""Tests for Gemini follow-up question handling."""
+
 import json
 from pathlib import Path
 from typing import Any, Optional
@@ -7,6 +9,7 @@ from landing_genie import gemini_runner
 
 
 def _test_config() -> Config:
+    """Build a test Config instance."""
     return Config(
         root_domain="example.com",
         cf_account_id="test-account",
@@ -21,6 +24,7 @@ def _test_config() -> Config:
 
 
 def test_parse_follow_up_questions_with_code_fence() -> None:
+    """Parse follow-up questions wrapped in JSON code fences."""
     response_block = """```json
 {
   "questions": [
@@ -49,6 +53,7 @@ def test_parse_follow_up_questions_with_code_fence() -> None:
 
 
 def test_follow_up_questions_feed_generation_prompt(tmp_path, monkeypatch) -> None:
+    """Ensure follow-up answers are injected into generation prompt."""
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "follow_up_questions_prompt.md").write_text(
@@ -86,6 +91,7 @@ def test_follow_up_questions_feed_generation_prompt(tmp_path, monkeypatch) -> No
         capture_output: bool = False,
         debug: bool = False,
     ) -> str:
+        """Capture calls and return a stubbed Gemini response."""
         call_log.append(
             {
                 "prompt": prompt_text,
@@ -137,6 +143,7 @@ def test_follow_up_questions_feed_generation_prompt(tmp_path, monkeypatch) -> No
 
 
 def test_generate_site_excludes_followups_when_flag_false(tmp_path, monkeypatch) -> None:
+    """Verify follow-up block is omitted when disabled."""
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)
     (prompts_dir / "runtime_generation_prompt.md").write_text(
@@ -158,6 +165,7 @@ def test_generate_site_excludes_followups_when_flag_false(tmp_path, monkeypatch)
         capture_output: bool = False,
         debug: bool = False,
     ) -> str:
+        """Capture the generation prompt without running Gemini."""
         call_log.append({"prompt": prompt_text})
         return ""
 

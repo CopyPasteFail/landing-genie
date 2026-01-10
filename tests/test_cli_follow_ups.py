@@ -1,3 +1,5 @@
+"""CLI tests for follow-up question handling and prompt logs."""
+
 from typer.testing import CliRunner
 
 from types import SimpleNamespace
@@ -8,6 +10,7 @@ from landing_genie.config import Config
 
 
 def test_new_skips_followups_when_flag_disabled(monkeypatch, tmp_path) -> None:
+    """Ensure --no-follow-ups bypasses question fetching."""
     runner = CliRunner()
     dummy_config = Config(
         root_domain="example.com",
@@ -25,6 +28,7 @@ def test_new_skips_followups_when_flag_disabled(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(cli, "_project_root", lambda: tmp_path)
 
     def _fail_suggest(*_args, **_kwargs):
+        """Fail if follow-up prompts are unexpectedly requested."""
         raise AssertionError("follow-up questions should be skipped when disabled")
 
     monkeypatch.setattr(cli, "suggest_follow_up_questions", _fail_suggest)
@@ -35,6 +39,7 @@ def test_new_skips_followups_when_flag_disabled(monkeypatch, tmp_path) -> None:
     (site_dir / "index.html").write_text("<html></html>")
 
     def _fake_generate_site(**kwargs):
+        """Record generation calls without running Gemini."""
         generated.append(kwargs)
 
     monkeypatch.setattr(cli, "generate_site", _fake_generate_site)
@@ -60,6 +65,7 @@ def test_new_skips_followups_when_flag_disabled(monkeypatch, tmp_path) -> None:
 
 
 def test_new_generates_image_prompts_when_images_disabled(monkeypatch, tmp_path) -> None:
+    """Ensure image prompts are generated when images are disabled."""
     runner = CliRunner()
     dummy_config = Config(
         root_domain="example.com",
@@ -77,15 +83,18 @@ def test_new_generates_image_prompts_when_images_disabled(monkeypatch, tmp_path)
     monkeypatch.setattr(cli, "_project_root", lambda: tmp_path)
 
     def _fail_generate_images(**_kwargs):
+        """Fail if image generation runs when --no-images is set."""
         raise AssertionError("image generation should be skipped when --no-images is set")
 
     prompts_called: list[dict] = []
 
     def _fake_generate_image_prompts(**kwargs):
+        """Record image prompt generation calls."""
         prompts_called.append(kwargs)
         return [("assets/hero.png", "prompt")]
 
     def _fake_generate_site(**kwargs):
+        """Create a minimal site for image prompt generation."""
         site_dir = tmp_path / "sites" / kwargs["slug"]
         site_dir.mkdir(parents=True, exist_ok=True)
         (site_dir / "index.html").write_text('<img src="assets/hero.png" alt="Hero">')
@@ -118,6 +127,7 @@ def test_new_generates_image_prompts_when_images_disabled(monkeypatch, tmp_path)
 
 
 def test_new_logs_prompts_and_overwrites(monkeypatch, tmp_path) -> None:
+    """Ensure prompt logs append across CLI runs."""
     runner = CliRunner()
     dummy_config = Config(
         root_domain="example.com",
@@ -146,11 +156,13 @@ def test_new_logs_prompts_and_overwrites(monkeypatch, tmp_path) -> None:
     )
 
     def _fake_run(*_args, **_kwargs):
+        """Stub subprocess.run for gemini CLI."""
         return SimpleNamespace(returncode=0, stdout="{}", stderr="")
 
     monkeypatch.setattr(gemini_runner.subprocess, "run", _fake_run)
 
     def _invoke(prompt_text: str) -> str:
+        """Invoke the CLI and return prompt log contents."""
         result = runner.invoke(
             cli.app,
             [
@@ -179,6 +191,7 @@ def test_new_logs_prompts_and_overwrites(monkeypatch, tmp_path) -> None:
 
 
 def test_prompt_log_respects_cap(monkeypatch, tmp_path) -> None:
+    """Ensure prompt log size cap is enforced."""
     runner = CliRunner()
     dummy_config = Config(
         root_domain="example.com",
@@ -208,6 +221,7 @@ def test_prompt_log_respects_cap(monkeypatch, tmp_path) -> None:
     )
 
     def _fake_run(*_args, **_kwargs):
+        """Stub subprocess.run for gemini CLI."""
         return SimpleNamespace(returncode=0, stdout="{}", stderr="")
 
     monkeypatch.setattr(gemini_runner.subprocess, "run", _fake_run)
@@ -240,6 +254,7 @@ def test_prompt_log_respects_cap(monkeypatch, tmp_path) -> None:
 
 
 def test_image_prompt_generation_logs_result(monkeypatch, tmp_path) -> None:
+    """Ensure image prompt results are logged."""
     dummy_config = Config(
         root_domain="example.com",
         cf_account_id="acc",
@@ -262,6 +277,7 @@ def test_image_prompt_generation_logs_result(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("LANDING_GENIE_PROMPT_LOG_PATH", str(tmp_path / ".log" / "gemini_prompts.log"))
 
     def _fake_run(*_args, **_kwargs):
+        """Stub subprocess.run to return image prompt JSON."""
         return SimpleNamespace(returncode=0, stdout='{"prompt": "generated image prompt"}', stderr="")
 
     monkeypatch.setattr(gemini_runner.subprocess, "run", _fake_run)
@@ -283,6 +299,7 @@ def test_image_prompt_generation_logs_result(monkeypatch, tmp_path) -> None:
 
 
 def test_batch_image_prompts(monkeypatch, tmp_path) -> None:
+    """Ensure batch image prompt generation returns prompts and logs them."""
     dummy_config = Config(
         root_domain="example.com",
         cf_account_id="acc",
@@ -305,6 +322,7 @@ def test_batch_image_prompts(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("LANDING_GENIE_PROMPT_LOG_PATH", str(tmp_path / ".log" / "gemini_prompts.log"))
 
     def _fake_run(prompt_text, model, config, **kwargs):
+        """Stub Gemini batch prompt response."""
         return '{"prompts":[{"src":"assets/hero.png","prompt":"p1"},{"src":"assets/feature.png","prompt":"p2"}]}'
 
     monkeypatch.setattr(gemini_runner, "_run_gemini", _fake_run)
