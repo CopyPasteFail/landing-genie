@@ -1,6 +1,8 @@
 You are crafting a Gemini Image prompt for a landing page asset.
 
 - Product description: {{ product_prompt }}
+- Product identity (shared across all images):
+{{ product_identity }}
 - Image slot path: {{ slot_src }}
 - Alt text / intent: {{ slot_alt }}
 - User clarifications for visuals:

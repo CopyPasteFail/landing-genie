@@ -105,6 +105,7 @@ def _resolve_image_prompt_for_slot(
     project_root: Path,
     config: Config,
     *,
+    product_identity: str | None = None,
     image_follow_up_context: str | None = None,
     debug: bool = False,
 ) -> str:
@@ -115,6 +116,7 @@ def _resolve_image_prompt_for_slot(
         slot_src=slot.src,
         slot_alt=slot.alt,
         product_prompt=product_prompt,
+        product_identity=product_identity,
         project_root=project_root,
         config=config,
         follow_up_context=image_follow_up_context,
@@ -440,6 +442,7 @@ def generate_image_prompts_for_site(
     product_prompt: str,
     project_root: Path,
     config: Config,
+    product_identity: str | None = None,
     image_follow_up_context: str | None = None,
     debug: bool = False,
 ) -> list[tuple[str, str]]:
@@ -456,6 +459,17 @@ def generate_image_prompts_for_site(
     if not slots:
         return []
 
+    from . import gemini_runner  # Local import to avoid circular dependency.
+
+    if product_identity is None:
+        product_identity = gemini_runner.generate_image_product_identity(
+            product_prompt,
+            project_root,
+            config,
+            follow_up_context=image_follow_up_context,
+            debug=debug,
+        )
+
     def _slot_alt(slot: ImageSlot) -> str:
         """Derive a usable alt description for a slot."""
         alt_clean = slot.alt.strip() if slot.alt else ""
@@ -464,11 +478,11 @@ def generate_image_prompts_for_site(
         return Path(slot.src).stem.replace("-", " ").replace("_", " ")
 
     slots_payload = [{"src": slot.src, "alt": _slot_alt(slot)} for slot in slots]
-    from . import gemini_runner  # Local import to avoid circular dependency.
 
     prompts_map = gemini_runner.generate_image_prompts_batch(
         slots_payload,
         product_prompt,
+        product_identity,
         project_root,
         config,
         follow_up_context=image_follow_up_context,
@@ -484,6 +498,7 @@ def generate_image_prompts_for_site(
                 product_prompt,
                 project_root,
                 config,
+                product_identity=product_identity,
                 image_follow_up_context=image_follow_up_context,
                 debug=debug,
             )
@@ -515,11 +530,22 @@ def generate_images_for_site(
     if not slots:
         return []
 
+    from . import gemini_runner  # Local import to avoid circular dependency.
+
+    product_identity = gemini_runner.generate_image_product_identity(
+        product_prompt,
+        project_root,
+        config,
+        follow_up_context=image_follow_up_context,
+        debug=debug,
+    )
+
     prompts_list = generate_image_prompts_for_site(
         slug=slug,
         product_prompt=product_prompt,
         project_root=project_root,
         config=config,
+        product_identity=product_identity,
         image_follow_up_context=image_follow_up_context,
         debug=debug,
     )
@@ -594,6 +620,7 @@ def generate_images_for_site(
                 product_prompt,
                 project_root,
                 config,
+                product_identity=product_identity,
                 image_follow_up_context=image_follow_up_context,
                 debug=debug,
             )
