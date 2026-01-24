@@ -20,6 +20,9 @@ const UNKNOWN_HOST_FALLBACK = "unknown-host";
 const HOST_SUBDOMAIN_SEPARATOR = ".";
 const EMPTY_STRING = "";
 const MESSAGE_ID_DOMAIN_FALLBACK = "unknown-domain";
+const AJAX_REQUEST_HEADER_NAME = "X-Requested-With";
+const AJAX_REQUEST_HEADER_VALUE = "fetch";
+const JSON_ACCEPT_HEADER_VALUE = "application/json";
 
 const COMMON_EMAIL_FIELD_NAMES = [
   "email",
@@ -157,6 +160,14 @@ async function handleRequest({ request, env }) {
       requestHost,
     });
     throw new Error("Email send failed.");
+  }
+
+  if (shouldReturnJsonResponse({ request })) {
+    return jsonResponse(
+      200,
+      { ok: true },
+      { "Cache-Control": "no-store" },
+    );
   }
 
   const redirectUrl = buildSuccessRedirectUrl({ request, requestHost });
@@ -478,6 +489,29 @@ function buildSuccessRedirectUrl({ request, requestHost }) {
   );
   redirectUrl.hash = "contact";
   return redirectUrl.toString();
+}
+
+/**
+ * Decide whether the caller expects a JSON response.
+ *
+ * Inputs:
+ * - request: Incoming HTTP request.
+ *
+ * Output:
+ * - boolean: True when JSON is requested (AJAX form submit).
+ */
+function shouldReturnJsonResponse({ request }) {
+  const acceptHeader = request.headers.get("Accept") || EMPTY_STRING;
+  if (acceptHeader.includes(JSON_ACCEPT_HEADER_VALUE)) {
+    return true;
+  }
+
+  const requestHeader = request.headers.get(AJAX_REQUEST_HEADER_NAME) || EMPTY_STRING;
+  if (requestHeader.toLowerCase() === AJAX_REQUEST_HEADER_VALUE) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

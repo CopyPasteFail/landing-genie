@@ -60,6 +60,25 @@ describe("contact form worker", () => {
     expect(response.headers.get("Location")).toContain("#contact");
   });
 
+  it("returns JSON success when requested by the client", async () => {
+    const env = createEnv();
+    const request = new Request("https://alpha.example.com/api/contact", {
+      method: "POST",
+      headers: {
+        Host: HOST,
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "name=Test%20User&email=test@example.com&message=Hello",
+    });
+
+    const response = await handleRequest({ request, env });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ ok: true });
+  });
+
   it("rejects hosts outside the configured root domain", async () => {
     const env = createEnv();
     const request = new Request("https://evil.example.net/api/contact", {

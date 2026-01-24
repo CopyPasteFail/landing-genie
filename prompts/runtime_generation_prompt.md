@@ -23,6 +23,9 @@ Tasks:
    - Include fields for name, email, phone (optional), and optional message.
    - Show a phone hint/placeholder of `+1-123456789` and allow only digits and hyphens with an optional leading `+`.
    - Include basic client side validation in `main.js`, including the phone format rule above when a phone number is provided.
+   - Submit via `fetch()` in `main.js` and show inline feedback.
+   - On success, show `Thanks, message sent`.
+   - On error, show `Something went wrong. Please try again.`
 
 4. Use modern CSS with responsive layout for desktop, tablet, and mobile.
 
