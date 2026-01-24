@@ -15,6 +15,7 @@ class Config:
     root_domain: str
     cf_account_id: str
     cf_api_token: str
+    lead_to_email: str | None
     gemini_code_model: str
     gemini_image_model: str
     gemini_cli_command: str
@@ -73,6 +74,7 @@ class Config:
             root_domain=_get("ROOT_DOMAIN"),
             cf_account_id=_get("CLOUDFLARE_ACCOUNT_ID"),
             cf_api_token=_get("CLOUDFLARE_API_TOKEN"),
+            lead_to_email=_get("LEAD_TO_EMAIL", required=False, default=None),
             gemini_code_model=_get("GEMINI_CODE_MODEL", required=False, default="gemini-2.5-pro"),
             gemini_image_model=_get("GEMINI_IMAGE_MODEL", required=False, default="gemini-2.5-flash-image"),
             gemini_cli_command=_get("GEMINI_CLI_COMMAND", required=False, default="gemini"),

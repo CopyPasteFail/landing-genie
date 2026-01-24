@@ -11,7 +11,7 @@ and deploy them to Cloudflare Pages under subdomains of a domain you own.
 - Cloudflare account with:
   - Account ID (`CLOUDFLARE_ACCOUNT_ID`)
   - API token with **Pages:Edit** and **DNS:Edit** permissions for that account (`CLOUDFLARE_API_TOKEN`)
-- Cloudflare wrangler CLI installed globally via npm (used for deploying to Pages)
+- Cloudflare Wrangler CLI installed locally via npm (used for deploying to Pages and the contact form Worker)
 - Gemini CLI installed and configured (see https://geminicli.com/docs/get-started/deployment/). Text prompts run via the CLI using its own auth (login recommended); set `GEMINI_ALLOW_CLI_API_KEY=1` only if you want the CLI to use your API key as well.
 - Billing-enabled `GEMINI_API_KEY` **only** for image generation (Python client). This key is not passed to the CLI by default so text requests stay on the non-billed flow.
 - Optional: a preferred Gemini code and image model name (see `.env.example` defaults)
@@ -99,12 +99,14 @@ nvm use 20.19.4
 > EOF
 > ```
 
-### 5) Deploy the generated public/ folder to Cloudflare Pages
-Direct Upload via Wrangler
+### 5) Install npm dependencies (Wrangler + tests)
+Local install via npm (includes Wrangler and Vitest)
 
 ```bash
-npm install -g wrangler@4.59.2
+npm install
 ```
+
+Wrangler is installed locally, so use `npx wrangler` (as the deploy command does).
 
 
 ## Quick start
@@ -130,7 +132,9 @@ With `GEMINI_API_KEY` set, `landing-genie new` will also render images for any `
 landing-genie images dronehit --overwrite --prompt "Landing page for an AI habit tracking app"
 ```
 
-### Tests (light, minimal tokens)
+## Tests 
+
+### Pytest test suite (light, minimal tokens)
 
 ```bash
 # Run all tests
@@ -151,6 +155,17 @@ Notes:
 - The CLI test respects `GEMINI_ALLOW_CLI_API_KEY`; by default it strips `GEMINI_API_KEY` from the CLI env.
 - The image test skips if `GEMINI_API_KEY` is unset; it writes the generated file under pytest’s temp dir (e.g., `/tmp/pytest-of-<user>/.../sites/image-smoke/assets/test.png`).
 
+### Contact form worker tests (Vitest)
+
+The contact form worker is written in JavaScript and tested with Vitest using
+Cloudflare's Workers test pool.
+
+Run tests:
+```
+npm test
+```
+
+
 ## Commands
 
 - `landing-genie init`  
@@ -168,6 +183,21 @@ Notes:
 
 - `landing-genie list`  
   List generated landings under `sites/`.
+
+## Contact form backend
+
+Generated landings include a contact form that posts to `/api/contact`. This repo deploys a
+single Cloudflare Worker during `landing-genie deploy` that handles that endpoint for **all**
+landing subdomains and forwards submissions to your inbox using Cloudflare Email Routing.
+
+What you need:
+- Enable Cloudflare Email Routing for your root domain.
+- Set `LEAD_TO_EMAIL` in your `.env` to the inbox that should receive submissions.
+
+What the Worker does:
+- From: `leads@<ROOT_DOMAIN>` with a display name that includes the subdomain.
+- Subject: `[Landing Lead] - New contact form submission`
+- Body: all submitted fields (no database/storage).
 
 ## Preview refinements
 
@@ -194,6 +224,7 @@ All configuration is read from `.env` (sample in `.env.example`). Defaults apply
 | `ROOT_DOMAIN` | required | Root domain you own (pointed to Cloudflare) for generated subdomains. |
 | `CLOUDFLARE_ACCOUNT_ID` | required | Cloudflare account ID used for Pages and DNS. |
 | `CLOUDFLARE_API_TOKEN` | required | API token with **Pages:Edit** and **DNS:Edit** for the account. |
+| `LEAD_TO_EMAIL` | required for deploy | Inbox that receives contact form submissions (used by the shared contact form Worker). |
 | `GEMINI_CODE_MODEL` | default `gemini-2.5-pro` | Text/code model for page generation via Gemini CLI. |
 | `GEMINI_IMAGE_MODEL` | default `gemini-2.5-flash-image` | Image model for rendering assets. |
 | `GEMINI_IMAGE_OUTPUT_COST_PER_1K_TOKENS` | optional | USD cost per 1k tokens for your image model (for cost reporting). |
@@ -389,7 +420,10 @@ For strict resolution control, you must resize after generation.
 - Dashboard: `My Profile` → `API Tokens` → `Create Token` → `Create Custom Token`.  
 - Permissions:  
   - `Account` → `Cloudflare Pages` → `Edit`  
+  - `Account` → `Workers Scripts` → `Edit`  
+  - `Zone` → `Workers Routes` → `Edit`  
   - `Zone` → `DNS` → `Edit`  
+  - `User` → `User Details` → `Read` (required by Wrangler in some environments)  
 - Account resources: Restrict to the target account (recommended) instead of “All accounts.”  
 - Zone resources: Restrict to the specific domain (recommended) instead of “All zones.”  
 - Save the token and set it as `CLOUDFLARE_API_TOKEN` in `.env`. Store it securely; you won’t see it again.

@@ -22,7 +22,7 @@ from .image_generator import (
     generate_images_for_site,
 )
 from .preview import serve_local
-from .cloudflare_api import deploy_to_pages, ensure_custom_domain
+from .cloudflare_api import deploy_contact_form_worker, deploy_to_pages, ensure_custom_domain
 from .site_paths import normalize_slug
 
 app = typer.Typer(help="landing-genie - generate and deploy AI landing pages")
@@ -249,6 +249,7 @@ def deploy(slug: str = typer.Argument(..., help="Slug under sites/ to deploy")) 
 
     config = Config.load()
     root = _project_root()
+    deploy_contact_form_worker(project_root=root, config=config)
     project_name = deploy_to_pages(slug=slug, project_root=root, config=config)
     fqdn = ensure_custom_domain(slug=slug, project_name=project_name, config=config)
     typer.echo(f"Live URL: https://{fqdn}")

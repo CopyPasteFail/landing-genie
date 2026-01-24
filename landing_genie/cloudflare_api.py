@@ -14,6 +14,15 @@ from .site_paths import normalize_site_dir
 
 API_BASE = "https://api.cloudflare.com/client/v4"
 PRODUCTION_BRANCH = "main"
+CONTACT_WORKER_NAME_PREFIX = "landing-genie-contact-form"
+CONTACT_WORKER_DIR_NAME = "cloudflare/contact-form-worker"
+CONTACT_WORKER_ENTRY_POINT = "src/index.js"
+CONTACT_WORKER_CONFIG_NAME = "contact-form-worker.toml"
+CONTACT_WORKER_COMPATIBILITY_DATE = "2026-01-24"
+CONTACT_WORKER_ROUTE_SUFFIX = "/api/contact*"
+CONTACT_WORKER_EMAIL_BINDING_NAME = "EMAIL"
+LEAD_FROM_LOCAL_PART = "leads"
+CONTACT_WORKER_NAME_MAX_LENGTH = 63
 _ZONE_CACHE: dict[str, str] = {}
 
 
@@ -94,6 +103,40 @@ def _project_name(slug: str, root_domain: str) -> str:
     if len(name) > 60:
         name = name[:60]
     return name
+
+
+def _contact_worker_name(root_domain: str) -> str:
+    """
+    Build a deterministic Worker name for the contact form handler.
+    """
+    domain_part = _sanitize_domain_for_project(root_domain)
+    name = f"{CONTACT_WORKER_NAME_PREFIX}-{domain_part}"
+    if len(name) > CONTACT_WORKER_NAME_MAX_LENGTH:
+        name = name[:CONTACT_WORKER_NAME_MAX_LENGTH]
+    return name
+
+
+def _build_lead_from_address(root_domain: str) -> str:
+    """
+    Build the sender address for contact form emails.
+    """
+    return f"{LEAD_FROM_LOCAL_PART}@{root_domain}"
+
+
+def _validate_lead_to_email(config: Config) -> str:
+    """
+    Return the configured lead destination email, raising on missing/invalid values.
+    """
+    lead_to_email = (config.lead_to_email or "").strip()
+    if not lead_to_email:
+        raise CloudflareAPIError(
+            "Missing LEAD_TO_EMAIL. Set it in your .env to enable the contact form email backend."
+        )
+    if "@" not in lead_to_email or " " in lead_to_email:
+        raise CloudflareAPIError(
+            "Invalid LEAD_TO_EMAIL. Provide a valid email address (e.g., leads@yourinbox.com)."
+        )
+    return lead_to_email
 
 
 def _get_pages_project(project_name: str, config: Config) -> dict[str, Any] | None:
@@ -193,6 +236,131 @@ def deploy_to_pages(slug: str, project_root: Path, config: Config) -> str:
     print(proc.stdout.strip())
 
     return project_name
+
+
+# ---------------------------------------------------------------------------
+# Contact form worker
+# ---------------------------------------------------------------------------
+
+
+def _render_contact_form_worker_config(
+    *,
+    worker_name: str,
+    main_path: Path,
+    root_domain: str,
+    from_address: str,
+    lead_to_email: str,
+    turnstile_secret_key: str | None,
+) -> str:
+    """
+    Render a Wrangler configuration for the shared contact form Worker.
+
+    Inputs:
+    - worker_name: deterministic name for the Worker.
+    - main_path: absolute path to the Worker entrypoint.
+    - root_domain: root domain used for routing.
+    - from_address: sender address (must be allowed by Email Routing).
+    - lead_to_email: destination inbox for submissions.
+    - turnstile_secret_key: optional Turnstile secret for bot protection.
+    """
+    main_path_str = main_path.as_posix()
+    config_lines = [
+        f'name = "{worker_name}"',
+        f'main = "{main_path_str}"',
+        f'compatibility_date = "{CONTACT_WORKER_COMPATIBILITY_DATE}"',
+        "",
+        "[[routes]]",
+        f'pattern = "*.{root_domain}{CONTACT_WORKER_ROUTE_SUFFIX}"',
+        f'zone_name = "{root_domain}"',
+        "",
+        "[[send_email]]",
+        f'name = "{CONTACT_WORKER_EMAIL_BINDING_NAME}"',
+        f'destination_address = "{lead_to_email}"',
+        f'allowed_sender_addresses = ["{from_address}"]',
+        "",
+        "[vars]",
+        f'ROOT_DOMAIN = "{root_domain}"',
+        f'FROM_ADDRESS = "{from_address}"',
+        f'TO_ADDRESS = "{lead_to_email}"',
+    ]
+
+    if turnstile_secret_key:
+        config_lines.append(f'TURNSTILE_SECRET_KEY = "{turnstile_secret_key}"')
+
+    config_lines.append("")
+    return "\n".join(config_lines)
+
+
+def deploy_contact_form_worker(
+    *,
+    project_root: Path,
+    config: Config,
+    debug: bool = False,
+) -> str:
+    """
+    Deploy the shared contact form Worker and route it to all landing subdomains.
+
+    Raises CloudflareAPIError if required configuration is missing or Wrangler
+    reports an error.
+    """
+    root_domain = config.root_domain.strip().lower()
+    if not root_domain:
+        raise CloudflareAPIError("ROOT_DOMAIN is missing; cannot configure contact form worker.")
+
+    lead_to_email = _validate_lead_to_email(config)
+    from_address = _build_lead_from_address(root_domain)
+    worker_name = _contact_worker_name(root_domain)
+
+    worker_root = project_root / CONTACT_WORKER_DIR_NAME
+    entry_path = (worker_root / CONTACT_WORKER_ENTRY_POINT).resolve()
+    if not entry_path.is_file():
+        raise CloudflareAPIError(f"Contact form worker entrypoint not found: {entry_path}")
+
+    config_dir = project_root / ".wrangler"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = (config_dir / CONTACT_WORKER_CONFIG_NAME).resolve()
+
+    config_text = _render_contact_form_worker_config(
+        worker_name=worker_name,
+        main_path=entry_path,
+        root_domain=root_domain,
+        from_address=from_address,
+        lead_to_email=lead_to_email,
+        turnstile_secret_key=(os.getenv("TURNSTILE_SECRET_KEY") or "").strip() or None,
+    )
+
+    config_path.write_text(config_text, encoding="utf-8")
+
+    env = os.environ.copy()
+    env["CLOUDFLARE_ACCOUNT_ID"] = config.cf_account_id
+    env["CLOUDFLARE_API_TOKEN"] = config.cf_api_token
+
+    cmd = [
+        "npx",
+        "wrangler",
+        "deploy",
+        "--config",
+        str(config_path),
+    ]
+
+    proc = subprocess.run(  # nosec B603
+        cmd,
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=str(worker_root),
+    )
+
+    if proc.returncode != 0:
+        raise CloudflareAPIError(
+            "Wrangler deploy failed for contact form worker "
+            f"(exit {proc.returncode}).\n\nSTDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}"
+        )
+
+    if debug:
+        print(proc.stdout.strip())
+
+    return worker_name
 
 
 # ---------------------------------------------------------------------------

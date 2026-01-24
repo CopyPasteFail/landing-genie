@@ -1,0 +1,17 @@
+name = "landing-genie-contact-form-ai-lablife"
+main = "/home/omer/repos/landing-genie/cloudflare/contact-form-worker/src/index.js"
+compatibility_date = "2026-01-24"
+
+[[routes]]
+pattern = "*.ai-lab.life/api/contact*"
+zone_name = "ai-lab.life"
+
+[[send_email]]
+name = "EMAIL"
+destination_address = "startapps4u+landing-genie@gmail.com"
+allowed_sender_addresses = ["leads@ai-lab.life"]
+
+[vars]
+ROOT_DOMAIN = "ai-lab.life"
+FROM_ADDRESS = "leads@ai-lab.life"
+TO_ADDRESS = "startapps4u+landing-genie@gmail.com"
