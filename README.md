@@ -199,6 +199,104 @@ What the Worker does:
 - Subject: `[Landing Lead] - New contact form submission`
 - Body: all submitted fields (no database/storage).
 
+### Enable Email Routing (Dashboard)
+
+The contact form Worker sends using Cloudflare Email Routing with:
+
+- **Sender (From):** `leads@<ROOT_DOMAIN>` (this is fixed by the deploy code)
+- **Destination (To):** `LEAD_TO_EMAIL` from your `.env`
+
+You must configure Email Routing so that **both** of these are permitted.
+
+`landing-genie deploy <slug>` writes `.wrangler/contact-form-worker.toml` with the Worker’s `destination_address` (your `LEAD_TO_EMAIL`) and `allowed_sender_addresses` (the derived `leads@<ROOT_DOMAIN>`). If you change `LEAD_TO_EMAIL`, redeploy to update the Worker config.
+
+#### Start Email Routing
+
+Cloudflare Dashboard → **Email** → **Email Routing**
+
+Click **Get started**.
+
+---
+
+#### Create a Custom Address (Sender Anchor)
+
+Create **one** custom address that exactly matches the sender used by the Worker:
+
+`leads@<YOUR_ROOT_DOMAIN>`
+
+Example:
+
+```
+leads@example.com
+```
+
+Action:
+
+- Choose **Send to an email**
+- Destination: An inbox (i.e. email address) you control (the same value set as `LEAD_TO_EMAIL`)
+
+> Note: Cloudflare treats destination addresses as **case-sensitive exact strings**.
+> The address used by your Worker (`LEAD_TO_EMAIL`) **must exactly match** the verified destination address, including letter case.
+
+---
+
+#### Verify Destination Address
+
+Cloudflare will send a verification email to the destination inbox.
+
+You must:
+
+- Open the email
+- Click **Verify email address**
+
+---
+
+#### Enable Routing (Critical Step)
+
+After verification:
+
+Email → **Email Routing** → **Overview**
+
+If you see:
+
+```
+Email Routing is currently disabled
+```
+
+Click **Enable Email Routing**.
+
+This step is **not automatic** and is required even after verification.
+
+---
+
+#### Add Required DNS Records
+
+When prompted, click **Add records and enable**.
+
+Cloudflare will add:
+
+- **MX records** (route mail to Cloudflare)
+- **SPF TXT record** (authorize Cloudflare to send)
+- **DKIM TXT record** (sign outgoing mail)
+
+These records are **mandatory** for sending email from Workers.
+
+If you skip this step, email sending will fail.
+
+---
+
+#### Confirm Final State
+
+Email → **Email Routing** → **Settings**
+
+You must see:
+
+- Routing status: **Enabled**
+- Email DNS records: **Configured**
+- MX records: **Locked**
+
+Only this state supports sending email from Cloudflare Workers.
+
 ## Preview refinements
 
 - When the local preview opens, hover or click any text-heavy section to launch the **Refine section** popup.
