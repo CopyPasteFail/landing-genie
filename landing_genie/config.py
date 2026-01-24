@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 import os
-from dataclasses import dataclass
-from typing import Literal, overload
+from dataclasses import dataclass, fields
+from typing import ClassVar, Literal, overload
 from dotenv import load_dotenv
 
 load_dotenv()
+
+_REDACTED_VALUE = "<redacted>"
 
 
 @dataclass
 class Config:
     """Runtime configuration for landing-genie."""
+    _secret_field_names: ClassVar[set[str]] = {"cf_api_token", "gemini_api_key"}
     root_domain: str
     cf_account_id: str
     cf_api_token: str
@@ -23,6 +26,24 @@ class Config:
     gemini_telemetry_otlp_endpoint: str | None
     gemini_image_cost_per_1k_tokens: float | None
     gemini_image_input_cost_per_1k_tokens: float | None
+
+    def __repr__(self) -> str:
+        """
+        Return a redacted representation for tracebacks/logs.
+
+        Inputs: the current Config instance.
+        Output: a string representation with secret fields masked.
+        Edge cases: None/empty secrets are shown as-is to aid debugging.
+        """
+        field_parts: list[str] = []
+        for field_info in fields(self):
+            value = getattr(self, field_info.name)
+            if field_info.name in self._secret_field_names and value:
+                display_value = repr(_REDACTED_VALUE)
+            else:
+                display_value = repr(value)
+            field_parts.append(f"{field_info.name}={display_value}")
+        return f"{self.__class__.__name__}({', '.join(field_parts)})"
 
     @classmethod
     def load(cls) -> "Config":
