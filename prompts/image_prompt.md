@@ -5,6 +5,8 @@ You are crafting a Gemini Image prompt for a landing page asset.
 - Alt text / intent: {{ slot_alt }}
 - User clarifications for visuals:
 {{ image_follow_up_context }}
+- Visual bible (JSON, use verbatim):
+{{ image_visual_bible }}
 
 Write a single, vivid prompt (1-2 sentences) for the Gemini Image model. Make it photorealistic unless the context specifies otherwise. Avoid any text overlays and keep backgrounds clean. If this is a hero slot, note a wide 16:9 composition; otherwise keep the palette cohesive with the page style. Reflect the clarifications above.
 

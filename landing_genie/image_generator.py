@@ -106,6 +106,7 @@ def _resolve_image_prompt_for_slot(
     config: Config,
     *,
     image_follow_up_context: str | None = None,
+    image_visual_bible: str | None = None,
     debug: bool = False,
 ) -> str:
     """Generate a prompt for a single image slot via Gemini."""
@@ -118,6 +119,7 @@ def _resolve_image_prompt_for_slot(
         project_root=project_root,
         config=config,
         follow_up_context=image_follow_up_context,
+        visual_bible=image_visual_bible,
         debug=debug,
     )
 
@@ -435,18 +437,14 @@ def _is_placeholder_asset(path: Path) -> bool:
         return False
 
 
-def generate_image_prompts_for_site(
+def _generate_image_prompts_with_visual_bible(
     slug: str,
     product_prompt: str,
     project_root: Path,
     config: Config,
     image_follow_up_context: str | None = None,
     debug: bool = False,
-) -> list[tuple[str, str]]:
-    """
-    Build image prompts for each asset slot without calling the image generation model.
-    Returns a list of (asset_path, prompt_text) pairs.
-    """
+) -> tuple[list[tuple[str, str]], str]:
     site_dir = normalize_site_dir(slug, project_root)
     index_path = site_dir / "index.html"
     if not index_path.exists():
@@ -454,7 +452,7 @@ def generate_image_prompts_for_site(
 
     slots = _discover_image_slots(index_path)
     if not slots:
-        return []
+        return [], ""
 
     def _slot_alt(slot: ImageSlot) -> str:
         """Derive a usable alt description for a slot."""
@@ -466,12 +464,21 @@ def generate_image_prompts_for_site(
     slots_payload = [{"src": slot.src, "alt": _slot_alt(slot)} for slot in slots]
     from . import gemini_runner  # Local import to avoid circular dependency.
 
+    image_visual_bible = gemini_runner.generate_image_visual_bible(
+        product_prompt,
+        project_root,
+        config,
+        follow_up_context=image_follow_up_context,
+        debug=debug,
+    )
+
     prompts_map = gemini_runner.generate_image_prompts_batch(
         slots_payload,
         product_prompt,
         project_root,
         config,
         follow_up_context=image_follow_up_context,
+        visual_bible=image_visual_bible,
         debug=debug,
     )
 
@@ -485,10 +492,34 @@ def generate_image_prompts_for_site(
                 project_root,
                 config,
                 image_follow_up_context=image_follow_up_context,
+                image_visual_bible=image_visual_bible,
                 debug=debug,
             )
         prompts.append((slot.src, prompt_text))
 
+    return prompts, image_visual_bible
+
+
+def generate_image_prompts_for_site(
+    slug: str,
+    product_prompt: str,
+    project_root: Path,
+    config: Config,
+    image_follow_up_context: str | None = None,
+    debug: bool = False,
+) -> list[tuple[str, str]]:
+    """
+    Build image prompts for each asset slot without calling the image generation model.
+    Returns a list of (asset_path, prompt_text) pairs.
+    """
+    prompts, _ = _generate_image_prompts_with_visual_bible(
+        slug=slug,
+        product_prompt=product_prompt,
+        project_root=project_root,
+        config=config,
+        image_follow_up_context=image_follow_up_context,
+        debug=debug,
+    )
     return prompts
 
 
@@ -515,7 +546,7 @@ def generate_images_for_site(
     if not slots:
         return []
 
-    prompts_list = generate_image_prompts_for_site(
+    prompts_list, image_visual_bible = _generate_image_prompts_with_visual_bible(
         slug=slug,
         product_prompt=product_prompt,
         project_root=project_root,
@@ -595,6 +626,7 @@ def generate_images_for_site(
                 project_root,
                 config,
                 image_follow_up_context=image_follow_up_context,
+                image_visual_bible=image_visual_bible,
                 debug=debug,
             )
             prompts_map[slot.src] = prompt_text
