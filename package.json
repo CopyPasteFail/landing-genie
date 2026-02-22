@@ -8,6 +8,6 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.4.0",
     "vitest": "1.5.2",
-    "wrangler": "4.60.0"
+    "wrangler": "4.67.0"
   }
 }
